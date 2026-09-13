@@ -159,7 +159,6 @@ client.once('ready', async () => {
     const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
-        // Eski komut ismini koruyoruz ki hata vermesin, açıklamasına menü olduğunu belirtiyoruz
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
@@ -170,7 +169,7 @@ client.once('ready', async () => {
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
         
-        console.log('[BAŞARILI] /aktiflikbot komutu butonlu panel olarak yüklendi!');
+        console.log('[BAŞARILI] /aktiflikbot komutu güncel butonlu panel olarak yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
@@ -203,7 +202,7 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     try {
-        // 1. SLASH KOMUT ÇALIŞTIĞINDA (Butonlu Ana Panel)
+        // 1. SLASH KOMUT (Ana Menü)
         if (interaction.isChatInputCommand()) {
             if (interaction.commandName === 'aktiflikbot') {
                 await interaction.deferReply().catch(() => {});
@@ -211,7 +210,7 @@ client.on('interactionCreate', async interaction => {
                 const embed = new EmbedBuilder()
                     .setColor('#6366f1')
                     .setTitle('🎮 Ventra x Letra Aktiflik Sistemi')
-                    .setDescription('Aşağıdaki butonları kullanarak kişisel puan istatistiklerinizi inceleyebilir veya sunucu liderlik tablosunu görüntüleyebilirsiniz.')
+                    .setDescription('Aşağıdaki butonları kullanarak günlük, haftalık, aylık ve toplam istatistiklerinizi ya da ilk 10 liderlik tablosunu görüntüleyebilirsiniz.')
                     .setTimestamp();
 
                 const row = new ActionRowBuilder().addComponents(
@@ -231,8 +230,9 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // 2. BUTONLARA TIKLANDIĞINDA
+        // 2. BUTON ETKİLEŞİMLERİ
         if (interaction.isButton()) {
+            // KİŞİSEL PUAN BUTONU
             if (interaction.customId === 'btn_puan') {
                 await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
@@ -261,6 +261,7 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ embeds: [embed] }).catch(() => {});
             }
 
+            // İLK 10 LİDERLİK TABLOSU BUTONU
             if (interaction.customId === 'btn_siralama') {
                 await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
@@ -280,12 +281,12 @@ client.on('interactionCreate', async interaction => {
                         };
                     })
                     .sort((a, b) => b.total - a.total)
-                    .slice(0, 10);
+                    .slice(0, 10); // Kesin olarak ilk 10 kişi
 
                 const embed = new EmbedBuilder()
                     .setColor('#10b981')
                     .setTitle('🏆 Ventra x Letra - Top 10 Liderlik Tablosu')
-                    .setDescription('Ventra ekibinin Letra sunucusundaki en aktif ilk 10 oyuncusu:')
+                    .setDescription('Ventra ekibinin Letra sunucusundaki en aktif ilk 10 oyuncusu (Günlük, Haftalık, Aylık, Toplam):')
                     .setTimestamp();
 
                 if (leaderboard.length === 0) {
@@ -294,9 +295,10 @@ client.on('interactionCreate', async interaction => {
                     let finalDesc = '';
                     leaderboard.forEach((item, index) => {
                         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                        finalDesc += `${medal} <@${item.userId}>\n> Günlük: \`${item.daily}\` | Haftalık: \`${item.weekly}\` | Aylık: \`${item.monthly}\` | **Toplam: \`${item.total} Puan\`**\n\n`;
+                        // Her kullanıcının Günlük, Haftalık, Aylık ve Toplam bilgisi satır satır ve düzgün sığacak şekilde düzenlendi:
+                        finalDesc += `${medal} <@${item.userId}>\n> 📅 Günlük: \`${item.daily}\` | 📆 Haftalık: \`${item.weekly}\`\n> 🗓️ Aylık: \`${item.monthly}\` | 🏆 **Toplam: \`${item.total}\`**\n\n`;
                     });
-                    embed.addFields({ name: '📊 Sıralama', value: finalDesc });
+                    embed.addFields({ name: '📊 İlk 10 Sıralaması', value: finalDesc });
                 }
 
                 await interaction.editReply({ embeds: [embed] }).catch(() => {});
