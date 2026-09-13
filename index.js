@@ -92,13 +92,14 @@ app.use(session({
     saveUninitialized: false
 }));
 
-const GUILD_ID = '1530348723958321262';
+// ASIL SUNUCU ID'Sİ GÜNCELLENDİ
+const GUILD_ID = '1548653462793748580';
 
 function formatPoint(puan) {
     return `${puan || 0} Puan`;
 }
 
-// Toplu ve güvenli puan ekleme fonksiyonu (Dosya yarışını engeller)
+// Toplu ve güvenli puan ekleme fonksiyonu (Dosya yarışını/çakışmasını kesinlikle engeller)
 function addPointsBatch(memberIdsMap) {
     if (memberIdsMap.size === 0) return;
 
@@ -190,10 +191,11 @@ client.once('ready', async () => {
                 .toJSON()
         ];
 
+        // Global komutları temizle, sadece asıl sunucuya özel komut yükle (hızlı senkronizasyon için)
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
         
-        console.log('[BAŞARILI] /aktiflikbot komutu güvenli sürümle yüklendi!');
+        console.log('[BAŞARILI] /aktiflikbot komutu asıl sunucuya yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
@@ -212,7 +214,7 @@ client.once('ready', async () => {
                 if (!member.presence || !member.presence.activities) return;
 
                 const isPlayingLetra = member.presence.activities.some(act => {
-                    if (!act || (act.type !== 0 && act.type !== 4)) return false; // 0: Playing, 4: Custom/Status (gerekirse esneklik)
+                    if (!act || (act.type !== 0 && act.type !== 4)) return false; 
                     const gameName = (act.name || '').toLowerCase();
                     const details = (act.details || '').toLowerCase();
                     const state = (act.state || '').toLowerCase();
