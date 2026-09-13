@@ -62,7 +62,7 @@ function addPointToUser(member) {
 
     userData.username = member.user.username;
     userData.displayName = member.displayName || member.user.globalName || member.user.username;
-    userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 });
+    userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 }) || 'https://cdn.discordapp.com/embed/avatars/0.png';
     userData.total = (userData.total || 0) + 1;
 
     db.set(`stats_${member.id}`, userData);
@@ -90,8 +90,8 @@ app.get('/', async (req, res) => {
 
                 return {
                     userId: uData.id || item.ID.replace('stats_', ''),
-                    username: uData.username || 'Bilinmiyor',
-                    displayName: uData.displayName || uData.username || 'Bilinmiyor',
+                    username: uData.username || 'Oyuncu',
+                    displayName: uData.displayName || uData.username || 'Oyuncu',
                     avatar: uData.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png',
                     dailyStr: formattedTime,
                     weeklyStr: formattedTime,
@@ -125,7 +125,7 @@ client.once('ready', async () => {
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
-                .setDescription('Sunucudaki Counter-Strike aktifliği ve süre liderlik tablosunu görüntülersiniz.')
+                .setDescription('Sunucudaki Counter aktifliği ve süre liderlik tablosunu görüntülersiniz.')
                 .toJSON()
         ];
 
@@ -135,20 +135,21 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // HER 10 SANİYEDE BİR: Sadece Counter-Strike oynayanların puanını artır
+    // HER 10 SANİYEDE BİR: İsmi "counter" geçen oyunları oynayanların puanını artır
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
             if (!guild) return;
 
+            await guild.members.fetch({ withPresences: true }).catch(() => {});
+
             guild.members.cache.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
-                // Sadece Counter-Strike oynayanları kontrol et
                 const isPlayingCounter = member.presence.activities.some(act => {
                     if (!act || act.type !== 0) return false; // Tür 0: Oynuyor
                     const gameName = act.name.toLowerCase();
-                    return gameName.includes('counter-strike');
+                    return gameName.includes('counter');
                 });
                 
                 if (isPlayingCounter) {
@@ -184,7 +185,7 @@ client.on('interactionCreate', async interaction => {
                     const uData = item.data || {};
                     return {
                         userId: uData.id || item.ID.replace('stats_', ''),
-                        displayName: uData.displayName || uData.username || 'Bilinmiyor',
+                        displayName: uData.displayName || uData.username || 'Oyuncu',
                         total: uData.total || 0
                     };
                 })
@@ -193,19 +194,25 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('🏆 Letra XII - Counter-Strike Aktiflik Sıralaması')
-                .setDescription('Sunucudaki en aktif Counter-Strike oyuncularının puan tablosu:')
+                .setTitle('🏆 Letra XII - Counter Aktiflik Sıralaması')
+                .setDescription('Sunucudaki en aktif Counter oyuncularının puan tablosu:')
                 .setTimestamp();
 
             if (leaderboard.length === 0) {
-                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Counter-Strike aktiflik verisi bulunmuyor.' });
+                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Counter aktiflik verisi bulunmuyor.' });
             } else {
                 let description = '';
                 leaderboard.forEach((item, index) => {
                     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                    description += `${medal} <@${item.userId}> — **${formatTime(item.total)}**\n`;
+                    description += `${medal} <@${item.userId}> — **formatTime(item.total)** veya **${formatTime(item.total)}**\n`; // Düzeltilmiş format
                 });
-                embed.addFields({ name: 'Sıralama', value: description });
+                // Not: Liderlik tablosundaki formatTime fonksiyonu yukarıda tanımlı
+                let finalDesc = '';
+                leaderboard.forEach((item, index) => {
+                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
+                    finalDesc += `${medal} <@${item.userId}> — **${formatTime(item.total)}**\n`;
+                });
+                embed.setFields({ name: 'Sıralama', value: finalDesc });
             }
 
             await interaction.editReply({ embeds: [embed] }).catch(() => {});
