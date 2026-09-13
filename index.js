@@ -169,7 +169,7 @@ client.once('ready', async () => {
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
         
-        console.log('[BAŞARILI] /aktiflikbot komutu güncel butonlu panel olarak yüklendi!');
+        console.log('[BAŞARILI] /aktiflikbot komutu gelişmiş menüyle yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
@@ -210,7 +210,7 @@ client.on('interactionCreate', async interaction => {
                 const embed = new EmbedBuilder()
                     .setColor('#6366f1')
                     .setTitle('🎮 Ventra x Letra Aktiflik Sistemi')
-                    .setDescription('Aşağıdaki butonları kullanarak günlük, haftalık, aylık ve toplam istatistiklerinizi ya da ilk 10 liderlik tablosunu görüntüleyebilirsiniz.')
+                    .setDescription('Aşağıdaki butonları kullanarak kişisel istatistiklerinizi inceleyebilir veya kategori seçerek liderlik tablosunu görüntüleyebilirsiniz.')
                     .setTimestamp();
 
                 const row = new ActionRowBuilder().addComponents(
@@ -220,7 +220,7 @@ client.on('interactionCreate', async interaction => {
                         .setStyle(ButtonStyle.Primary)
                         .setEmoji('👤'),
                     new ButtonBuilder()
-                        .setCustomId('btn_siralama')
+                        .setCustomId('btn_siralama_menu')
                         .setLabel('Sıralamayı Gör')
                         .setStyle(ButtonStyle.Success)
                         .setEmoji('🏆')
@@ -232,7 +232,7 @@ client.on('interactionCreate', async interaction => {
 
         // 2. BUTON ETKİLEŞİMLERİ
         if (interaction.isButton()) {
-            // KİŞİSEL PUAN BUTONU
+            // KİŞİSEL PUAN GÖSTER (Günlük, Haftalık, Aylık, Toplam)
             if (interaction.customId === 'btn_puan') {
                 await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
@@ -261,11 +261,50 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ embeds: [embed] }).catch(() => {});
             }
 
-            // İLK 10 LİDERLİK TABLOSU BUTONU
-            if (interaction.customId === 'btn_siralama') {
+            // SIRALAMAYI GÖR BUTONUNA BASILINCA ALT SEÇENEKLERİ ÇIKAR
+            if (interaction.customId === 'btn_siralama_menu') {
+                await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+                const embed = new EmbedBuilder()
+                    .setColor('#10b981')
+                    .setTitle('🏆 Liderlik Tablosu Kategorileri')
+                    .setDescription('Hangi döneme ait ilk 10 sıralamasını görmek istiyorsan lütfen aşağıdaki butonlardan birini seç:')
+                    .setTimestamp();
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('lb_daily').setLabel('Günlük').setStyle(ButtonStyle.Secondary).setEmoji('📅'),
+                    new ButtonBuilder().setCustomId('lb_weekly').setLabel('Haftalık').setStyle(ButtonStyle.Secondary).setEmoji('📆'),
+                    new ButtonBuilder().setCustomId('lb_monthly').setLabel('Aylık').setStyle(ButtonStyle.Secondary).setEmoji('🗓️'),
+                    new ButtonBuilder().setCustomId('lb_total').setLabel('Toplam').setStyle(ButtonStyle.Success).setEmoji('🏆')
+                );
+
+                await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
+            }
+
+            // SEÇİLEN KATEGORİYE GÖRE TOP 10 LİDERLİK TABLOSUNU GÖSTER
+            if (['lb_daily', 'lb_weekly', 'lb_monthly', 'lb_total'].includes(interaction.customId)) {
                 await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
                 let db = readDB();
+                const type = interaction.customId.replace('lb_', ''); // daily, weekly, monthly, total
+
+                let titleText = '';
+                let colorHex = '#10b981';
+
+                if (type === 'daily') {
+                    titleText = '📅 Günlük En Aktif İlk 10 Oyuncu (Son 24 Saat)';
+                    colorHex = '#3b82f6';
+                } else if (type === 'weekly') {
+                    titleText = '📆 Haftalık En Aktif İlk 10 Oyuncu (Son 7 Gün)';
+                    colorHex = '#8b5cf6';
+                } else if (type === 'monthly') {
+                    titleText = '🗓️ Aylık En Aktif İlk 10 Oyuncu (Son 30 Gün)';
+                    colorHex = '#ec4899';
+                } else {
+                    titleText = '🏆 Tüm Zamanların En Aktif İlk 10 Oyuncusu';
+                    colorHex = '#10b981';
+                }
+
                 const leaderboard = Object.keys(db)
                     .filter(key => key.startsWith('stats_'))
                     .map(key => {
@@ -273,35 +312,36 @@ client.on('interactionCreate', async interaction => {
                         updateResetFields(uData);
                         return {
                             userId: uData.id || key.replace('stats_', ''),
-                            displayName: uData.displayName || uData.username || 'Oyuncu',
-                            daily: uData.daily || 0,
-                            weekly: uData.weekly || 0,
-                            monthly: uData.monthly || 0,
-                            total: uData.total || 0
+                            score: uData[type] || 0
                         };
                     })
-                    .sort((a, b) => b.total - a.total)
-                    .slice(0, 10); // Kesin olarak ilk 10 kişi
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, 10); // İlk 10 kişi
 
                 const embed = new EmbedBuilder()
-                    .setColor('#10b981')
-                    .setTitle('🏆 Ventra x Letra - Top 10 Liderlik Tablosu')
-                    .setDescription('Ventra ekibinin Letra sunucusundaki en aktif ilk 10 oyuncusu (Günlük, Haftalık, Aylık, Toplam):')
+                    .setColor(colorHex)
+                    .setTitle(titleText)
                     .setTimestamp();
 
-                if (leaderboard.length === 0) {
-                    embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Letra aktiflik puanı bulunmuyor.' });
+                if (leaderboard.length === 0 || leaderboard.every(item => item.score === 0)) {
+                    embed.setDescription('Bu kategoride henüz kaydedilmiş bir puan bulunmuyor.');
                 } else {
                     let finalDesc = '';
                     leaderboard.forEach((item, index) => {
-                        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                        // Her kullanıcının Günlük, Haftalık, Aylık ve Toplam bilgisi satır satır ve düzgün sığacak şekilde düzenlendi:
-                        finalDesc += `${medal} <@${item.userId}>\n> 📅 Günlük: \`${item.daily}\` | 📆 Haftalık: \`${item.weekly}\`\n> 🗓️ Aylık: \`${item.monthly}\` | 🏆 **Toplam: \`${item.total}\`**\n\n`;
+                        if (item.score > 0) {
+                            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
+                            finalDesc += `${medal} <@${item.userId}> ➔ \`${item.score} Puan\`\n`;
+                        }
                     });
-                    embed.addFields({ name: '📊 İlk 10 Sıralaması', value: finalDesc });
+                    
+                    if (!finalDesc) {
+                        finalDesc = 'Bu dönem için henüz puana sahip aktif oyuncu yok.';
+                    }
+                    
+                    embed.setDescription(finalDesc);
                 }
 
-                await interaction.editReply({ embeds: [embed] }).catch(() => {});
+                await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
             }
         }
     } catch (err) {
