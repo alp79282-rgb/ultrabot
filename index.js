@@ -13,43 +13,39 @@ const client = new Client({
     partials: [Partials.GuildMember, Partials.Message, Partials.Channel, Partials.Reaction, Partials.User]
 });
 
-// Gelişmiş Komut Seti
 const commands = [
-    { name: 'ticket-kur', description: '🎫 Destek bileti sistemini kurar.' },
-    { name: 'sil', description: '🧹 Mesajları temizler.', options: [{ name: 'miktar', type: 4, description: '1-100 arası miktar', required: true }] },
-    { name: 'ban', description: '🔨 Kullanıcıyı sunucudan yasaklar.', options: [{ name: 'kullanici', type: 6, description: 'Üye', required: true }, { name: 'sebep', type: 3, description: 'Yasaklama sebebi', required: false }] },
-    { name: 'kick', description: '👢 Kullanıcıyı sunucudan atar.', options: [{ name: 'kullanici', type: 6, description: 'Üye', required: true }] },
-    { name: 'seviye', description: '📊 Mevcut XP ve seviyeni gösterir.' },
-    { name: 'istatistik', description: '⚡ Botun anlık sistem ve sunucu verilerini gösterir.' }
+    { name: 'ticket-kur', description: 'Destek bileti panelini kanala kurar.' },
+    { name: 'whitelist-kur', description: 'Kayıt ve başvuru panelini kanala kurar.' },
+    { name: 'mesai-kur', description: 'LSPD/EMS için mesai takip panelini kurar.' },
+    { name: 'sil', description: 'Belirtilen miktarda mesajı temizler.', options: [{ name: 'miktar', type: 4, description: '1-100 arası miktar', required: true }] },
+    { name: 'ban', description: 'Kullanıcıyı sunucudan yasaklar.', options: [{ name: 'kullanici', type: 6, description: 'Yasaklanacak üye', required: true }, { name: 'sebep', type: 3, description: 'Sebep', required: false }] },
+    { name: 'kick', description: 'Kullanıcıyı sunucudan atar.', options: [{ name: 'kullanici', type: 6, description: 'Atılacak üye', required: true }] },
+    { name: 'wl-ver', description: 'Kullanıcıya Whitelist rolü verir.', options: [{ name: 'kullanici', type: 6, description: 'Onaylanacak üye', required: true }, { name: 'hex', type: 3, description: 'Steam Hex ID', required: true }] },
+    { name: 'durum', description: 'FiveM sunucu aktiflik ve oyuncu istatistiklerini gösterir.' }
 ];
 
 client.once('ready', async () => {
-    console.log(`[🚀 VENTRA CORE] ${client.user.tag} devrede!`);
-    client.user.setActivity('Ventra Cloud Dashboard | v2.0', { type: 3 });
-
+    client.user.setActivity('Ventra FiveM Infrastructure', { type: 3 });
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         client.guilds.cache.forEach(async (guild) => {
             await rest.put(Routes.applicationGuildCommands(client.user.id, guild.id), { body: commands });
         });
-        console.log('[⚡] Tüm modül komutları Discord API\'ye yüklendi!');
-    } catch (error) { console.error(error); }
+    } catch (error) {}
 });
 
-// Otomatik Sistemler (Oto-Rol, Karşılama, XP, Oto-Mod, Link Engeli)
 client.on('guildMemberAdd', async (member) => {
-    const autoRoleId = db.fetch(`autorole_${member.guild.id}`);
-    const welcomeChannelId = db.fetch(`welcomechannel_${member.guild.id}`);
+    const unregRole = db.fetch(`unregistered_role_${member.guild.id}`);
+    const welcomeChannel = db.fetch(`welcomechannel_${member.guild.id}`);
 
-    if (autoRoleId) member.roles.add(autoRoleId).catch(() => {});
-    if (welcomeChannelId) {
-        const channel = member.guild.channels.cache.get(welcomeChannelId);
+    if (unregRole) member.roles.add(unregRole).catch(() => {});
+    if (welcomeChannel) {
+        const channel = member.guild.channels.cache.get(welcomeChannel);
         if (channel) {
             const embed = new EmbedBuilder()
-                .setTitle("🌌 Yeni Bir Üye Katıldı!")
-                .setDescription(`Aramıza hoş geldin ${member}! Seninle birlikte **${member.guild.memberCount}** kişi olduk.`)
-                .setColor("#8b5cf6")
-                .setThumbnail(member.user.displayAvatarURL());
+                .setTitle('Sunucuya Hoş Geldin')
+                .setDescription(`${member} katıldı. Whitelist başvurusu yapmak için ilgili kanalı kullanabilirsiniz.`)
+                .setColor('#2563eb');
             channel.send({ embeds: [embed] });
         }
     }
@@ -58,76 +54,114 @@ client.on('guildMemberAdd', async (member) => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
-    // Reklam / Link Engeli Modülü
     if (db.fetch(`antilink_${message.guild.id}`)) {
         const linkRegex = /(https?:\/\/[^\s]+)/g;
         if (linkRegex.test(message.content) && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
             message.delete().catch(() => {});
-            return message.channel.send(`⚠️ ${message.author}, bu sunucuda link paylaşımı engellenmiştir!`).then(m => setTimeout(() => m.delete(), 3000));
+            return message.channel.send(`${message.author}, bağlantı paylaşımı engellendi.`).then(m => setTimeout(() => m.delete(), 3000));
         }
     }
 
-    // Küfür Engeli Modülü
     if (db.fetch(`antiswear_${message.guild.id}`)) {
         const badWords = ["amk", "aq", "piç", "orospu", "sik", "oc"];
         if (badWords.some(w => message.content.toLowerCase().includes(w)) && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
             message.delete().catch(() => {});
-            return message.channel.send(`⚠️ ${message.author}, küfür/hakaret içerikli mesajlar engellenmektedir!`).then(m => setTimeout(() => m.delete(), 3000));
+            return message.channel.send(`${message.author}, mesajınız içerik filtresine takıldı.`).then(m => setTimeout(() => m.delete(), 3000));
         }
-    }
-
-    // XP & Leveling Sistemi
-    const xpKey = `xp_${message.guild.id}_${message.author.id}`;
-    const levelKey = `level_${message.guild.id}_${message.author.id}`;
-    db.add(xpKey, Math.floor(Math.random() * 10) + 10);
-    
-    let xp = db.fetch(xpKey), level = db.fetch(levelKey) || 0, nextXp = (level + 1) * 200;
-    if (xp >= nextXp) {
-        db.add(levelKey, 1);
-        message.channel.send(`🎉 Tebrikler ${message.author}! Level atladın: **Seviye ${level + 1}** 🚀`);
     }
 });
 
-// Slash Komut Yanıtlayıcıları
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand()) {
         await interaction.deferReply({ ephemeral: true });
 
         if (interaction.commandName === 'ticket-kur') {
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_ticket').setLabel('📩 Destek Talebi Oluştur').setStyle(ButtonStyle.Primary)
+                new ButtonBuilder().setCustomId('btn_ticket').setLabel('Destek Talebi Oluştur').setStyle(ButtonStyle.Primary)
             );
             const embed = new EmbedBuilder()
-                .setTitle('🎫 Destek & Müşteri Hizmetleri')
-                .setDescription('Bir konuda yardıma veya yetkili desteğine ihtiyacınız varsa aşağıdaki butona basarak özel bilet açabilirsiniz.')
-                .setColor('#6366f1');
+                .setTitle('FiveM Oyuncu Destek Merkezi')
+                .setDescription('Oyuniçi veya teknik sorunlarınız için talep oluşturabilirsiniz.')
+                .setColor('#2563eb');
 
             await interaction.channel.send({ embeds: [embed], components: [row] });
-            return await interaction.editReply({ content: '✅ Destek paneli başarıyla kuruldu!' });
+            return await interaction.editReply({ content: 'Destek paneli oluşturuldu.' });
+        }
+
+        if (interaction.commandName === 'whitelist-kur') {
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_wl_apply').setLabel('Whitelist Başvurusu').setStyle(ButtonStyle.Success)
+            );
+            const embed = new EmbedBuilder()
+                .setTitle('Whitelist Başvuru Paneli')
+                .setDescription('Sunucuya erişim sağlamak için başvuru yapabilirsiniz.')
+                .setColor('#10b981');
+
+            await interaction.channel.send({ embeds: [embed], components: [row] });
+            return await interaction.editReply({ content: 'Whitelist paneli kuruldu.' });
+        }
+
+        if (interaction.commandName === 'mesai-kur') {
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('btn_duty_on').setLabel('Mesai Giriş').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('btn_duty_off').setLabel('Mesai Çıkış').setStyle(ButtonStyle.Danger)
+            );
+            const embed = new EmbedBuilder()
+                .setTitle('LSPD / EMS Mesai Takip Paneli')
+                .setDescription('Giriş ve çıkış saatlerinizi kaydetmek için butonları kullanın.')
+                .setColor('#f59e0b');
+
+            await interaction.channel.send({ embeds: [embed], components: [row] });
+            return await interaction.editReply({ content: 'Mesai takip paneli kuruldu.' });
+        }
+
+        if (interaction.commandName === 'wl-ver') {
+            const target = interaction.options.getUser('kullanici');
+            const hex = interaction.options.getString('hex');
+            const wlRole = db.fetch(`wl_role_${interaction.guild.id}`);
+            const unregRole = db.fetch(`unregistered_role_${interaction.guild.id}`);
+
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageRoles)) return await interaction.editReply('Yetersiz yetki.');
+
+            const member = await interaction.guild.members.fetch(target.id);
+            if (wlRole) await member.roles.add(wlRole).catch(() => {});
+            if (unregRole) await member.roles.remove(unregRole).catch(() => {});
+
+            db.set(`hex_${target.id}`, hex);
+            return await interaction.editReply({ content: `${target.tag} kullanıcısına Whitelist tanımlandı. Hex ID: ${hex}` });
         }
 
         if (interaction.commandName === 'sil') {
             const miktar = interaction.options.getInteger('miktar');
-            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) return await interaction.editReply('❌ Yetkiniz yetersiz!');
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) return await interaction.editReply('Yetersiz yetki.');
             await interaction.channel.bulkDelete(miktar, true).catch(() => {});
-            return await interaction.editReply({ content: `🧹 **${miktar}** adet mesaj temizlendi.` });
+            return await interaction.editReply({ content: `${miktar} adet mesaj silindi.` });
         }
 
-        if (interaction.commandName === 'seviye') {
-            const xp = db.fetch(`xp_${interaction.guild.id}_${interaction.user.id}`) || 0;
-            const level = db.fetch(`level_${interaction.guild.id}_${interaction.user.id}`) || 0;
-            return await interaction.editReply({ content: `📊 **Seviyen:** ${level} | **Toplam XP:** ${xp}` });
+        if (interaction.commandName === 'ban') {
+            const target = interaction.options.getUser('kullanici');
+            const reason = interaction.options.getString('sebep') || 'Belirtilmedi';
+            if (!interaction.member.permissions.has(PermissionFlagsBits.BanMembers)) return await interaction.editReply('Yetersiz yetki.');
+            await interaction.guild.members.ban(target, { reason }).catch(() => {});
+            return await interaction.editReply({ content: `${target.tag} uzaklaştırıldı.` });
         }
 
-        if (interaction.commandName === 'istatistik') {
+        if (interaction.commandName === 'kick') {
+            const target = interaction.options.getUser('kullanici');
+            if (!interaction.member.permissions.has(PermissionFlagsBits.KickMembers)) return await interaction.editReply('Yetersiz yetki.');
+            await interaction.guild.members.kick(target).catch(() => {});
+            return await interaction.editReply({ content: `${target.tag} atıldı.` });
+        }
+
+        if (interaction.commandName === 'durum') {
+            const ip = db.fetch(`server_ip_${interaction.guild.id}`) || 'Tanımlanmadı';
             const embed = new EmbedBuilder()
-                .setTitle('⚡ Ventra Bot İstatistikleri')
+                .setTitle('FiveM Sunucu Durumu')
                 .addFields(
-                    { name: 'Sunucu Sayısı', value: `${client.guilds.cache.size}`, inline: true },
-                    { name: 'Toplam Kullanıcı', value: `${client.guilds.cache.reduce((a, g) => a + g.memberCount, 0)}`, inline: true },
-                    { name: 'Gecikme (Ping)', value: `${client.ws.ping}ms`, inline: true }
+                    { name: 'Sunucu Adresi', value: `${ip}`, inline: true },
+                    { name: 'Sistem Durumu', value: 'Aktif', inline: true }
                 )
-                .setColor('#a855f7');
+                .setColor('#2563eb');
             return await interaction.editReply({ embeds: [embed] });
         }
     }
@@ -142,21 +176,36 @@ client.on('interactionCreate', async (interaction) => {
                     { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
                 ]
             });
-            return await interaction.editReply({ content: `✅ Biletiniz oluşturuldu: ${channel}` });
+            return await interaction.editReply({ content: `Destek kanalı açıldı: ${channel}` });
+        }
+
+        if (interaction.customId === 'btn_duty_on') {
+            await interaction.deferReply({ ephemeral: true });
+            db.set(`duty_${interaction.guild.id}_${interaction.user.id}`, Date.now());
+            return await interaction.editReply({ content: 'Mesaiye giriş yapıldı.' });
+        }
+
+        if (interaction.customId === 'btn_duty_off') {
+            await interaction.deferReply({ ephemeral: true });
+            const startTime = db.fetch(`duty_${interaction.guild.id}_${interaction.user.id}`);
+            if (!startTime) return await interaction.editReply({ content: 'Aktif mesai kaydınız bulunmuyor.' });
+            
+            const duration = Math.floor((Date.now() - startTime) / 1000 / 60);
+            db.delete(`duty_${interaction.guild.id}_${interaction.user.id}`);
+            return await interaction.editReply({ content: `Mesaiden çıkış yapıldı. Toplam süre: ${duration} dakika.` });
         }
     }
 });
 
-// Express Web Panel Engine
 const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(session({ secret: process.env.SESSION_SECRET || 'ventra_secret_123', resave: false, saveUninitialized: false }));
+app.use(session({ secret: process.env.SESSION_SECRET || 'ventra_fivem_sec', resave: false, saveUninitialized: false }));
 
 app.get('/', (req, res) => {
-    const botData = client.user ? { username: client.user.username, avatarURL: () => client.user.displayAvatarURL() } : { username: 'Ventra Cloud', avatarURL: () => null };
+    const botData = client.user ? { username: client.user.username, avatarURL: () => client.user.displayAvatarURL() } : { username: 'Ventra FiveM', avatarURL: () => null };
     const guilds = client.guilds ? client.guilds.cache.map(g => ({ id: g.id, name: g.name, icon: g.iconURL() })) : [];
 
     res.render('index', {
@@ -170,13 +219,18 @@ app.get('/', (req, res) => {
 
 app.post('/api/settings/:guildId', (req, res) => {
     const { guildId } = req.params;
-    const { autoRoleId, welcomeChannelId, antiSwear, antiLink } = req.body;
-    db.set(`autorole_${guildId}`, autoRoleId || null);
+    const { serverIp, wlRoleId, unregRoleId, welcomeChannelId, logChannelId, antiSwear, antiLink } = req.body;
+
+    db.set(`server_ip_${guildId}`, serverIp || null);
+    db.set(`wl_role_${guildId}`, wlRoleId || null);
+    db.set(`unregistered_role_${guildId}`, unregRoleId || null);
     db.set(`welcomechannel_${guildId}`, welcomeChannelId || null);
+    db.set(`log_channel_${guildId}`, logChannelId || null);
     db.set(`antiswear_${guildId}`, antiSwear === 'on');
     db.set(`antilink_${guildId}`, antiLink === 'on');
+
     res.redirect('/');
 });
 
-app.listen(process.env.PORT || 3000, () => console.log(`[🌐 WEB] Panel aktif.`));
+app.listen(process.env.PORT || 3000, () => {});
 client.login(process.env.TOKEN);
