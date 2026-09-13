@@ -1,17 +1,20 @@
 {
-  "name": "letra-xi-bot",
-  "version": "2.1.0",
-  "description": "Letra XII Active Tracking & Admin Dashboard",
+  "name": "letra-xii-bot",
+  "version": "1.0.0",
+  "description": "Letra XII FiveM Aktiflik ve Yonetim Paneli",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "croxydb": "^0.1.5",
     "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
+    "ejs": "^3.1.9",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
-    "node-fetch": "^2.7.0",
-    "croxydb": "^0.2.1"
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
