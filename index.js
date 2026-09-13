@@ -4,16 +4,16 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const db = require('croxydb');
-.
+
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Discord Bot Kurulumu (Presence ve Member Intentleri Açık)
+// Discord Bot Kurulumu (Presence ve Member Intentleri Aktif)
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences, // Aktiflik durumunu okumak için HAYATİ ÖNEM TAŞIR
+        GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildMessages
     ],
     partials: [Partials.User, Partials.Channel, Partials.GuildMember]
@@ -43,11 +43,12 @@ app.get('/', async (req, res) => {
 
     // Veritabanından kayıtlı aktiflik sürelerini çekiyoruz
     const allData = db.all() || [];
-    // Sadece aktiflik verilerini filtrele
-    const activeRecords = allData.filter(item => item.ID.startsWith('aktiflik_')).map(item => ({
-        userId: item.ID.replace('aktiflik_', ''),
-        time: item.data
-    }));
+    const activeRecords = allData
+        .filter(item => item.ID && item.ID.startsWith('aktiflik_'))
+        .map(item => ({
+            userId: item.ID.replace('aktiflik_', ''),
+            time: item.data
+        }));
 
     res.render('index', { bot: botUser, records: activeRecords });
 });
@@ -58,7 +59,7 @@ app.get('/health', (req, res) => {
 
 // --- DISCORD BOT EVENTLERİ & AKTİFLİK TAKİBİ ---
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
     console.log(`[🚀 VENTRA CORE] ${client.user.tag} devrede!`);
 
     const commands = [
@@ -80,20 +81,18 @@ client.once('clientReady', async () => {
     }
 });
 
-// Oyuncuların aktivite durumunu (FiveM veya herhangi bir oyun) takip eden mekanizma
+// Oyuncuların aktivite durumunu takip eden mekanizma
 client.on('presenceUpdate', (oldPresence, newPresence) => {
     if (!newPresence || !newPresence.member) return;
     
     const userId = newPresence.member.id;
     const activities = newPresence.activities;
 
-    // Kullanıcının oynadığı bir oyun var mı kontrol ediyoruz
-    const playingGame = activities.find(act => act.type === 0); // 0 = Playing (Oynuyor)
+    const playingGame = activities.find(act => act.type === 0); // 0 = Playing
 
     if (playingGame) {
-        // Örn: FiveM oynuyorsa veya genel oyundaysa veritabanına işliyoruz
         let currentCount = db.fetch(`aktiflik_${userId}`) || 0;
-        db.set(`aktiflik_${userId}`, currentCount + 1); // Basit sayaç mantığı veya süre entegrasyonu
+        db.set(`aktiflik_${userId}`, currentCount + 1);
     }
 });
 
