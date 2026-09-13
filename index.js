@@ -67,7 +67,7 @@ function formatTime(puan) {
     return res.join(' ');
 }
 
-// Puan Ekleme Yardımcı Fonksiyonu
+// Puan Ekleme Fonksiyonu (10 saniyede 1 puan)
 function addPointToUser(member) {
     if (!member || !member.user) return;
 
@@ -102,7 +102,7 @@ function addPointToUser(member) {
     userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
 
     db.set(`stats_${member.id}`, userData);
-    console.log(`[SÜRE EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+    console.log(`[PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
 }
 
 // Web Paneli Rotası
@@ -177,7 +177,7 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // ARKA PLAN DÖNGÜSÜ: Her 10 saniyede bir etkinlikte görünenleri tara
+    // HER 10 SANİYEDE BİR: Etkinlikte görünen herkesin puanını 1 artır
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -199,26 +199,6 @@ client.once('ready', async () => {
             console.error("Periyodik tarama hatası:", err);
         }
     }, 10000);
-});
-
-// ANLIK YAKALAMA: Etkinlik durumu anında değiştiğinde tetiklenir
-client.on('presenceUpdate', (oldPresence, newPresence) => {
-    try {
-        if (!newPresence || !newPresence.guild || newPresence.guild.id !== GUILD_ID) return;
-        const activities = newPresence.activities;
-        if (!activities) return;
-
-        activities.forEach(act => {
-            if (act && act.name) {
-                const name = act.name.toLowerCase();
-                if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
-                    addPointToUser(newPresence.member);
-                }
-            }
-        });
-    } catch (err) {
-        console.error("PresenceUpdate hata:", err);
-    }
 });
 
 // Slash Komutu (/aktiflikbot -> Liderlik Tablosu)
