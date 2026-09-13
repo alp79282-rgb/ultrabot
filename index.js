@@ -22,15 +22,12 @@ const client = new Client({
 
 // --- 1. SLASH KOMUTLARINI KAYDETME ---
 client.once('ready', async () => {
-    console.log(`${client.user.tag} bulut sunucuya başarıyla bağlandı!`);
+    console.log(`${client.user.tag} aktif! Komutlar yükleniyor.`);
 
     const commands = [
         new SlashCommandBuilder()
-            .setName('aktifligim')
-            .setDescription('Letra XII oyun sürenizi ve istatistiklerinizi görüntülersiniz.'),
-        new SlashCommandBuilder()
-            .setName('ekip-siralama')
-            .setDescription('Ekibin anlık aktiflik sıralamasını gösterir.')
+            .setName('aktiflik')
+            .setDescription('Letra XII oyun sürenizi ve yetkilendirme bağlantınızı görüntülersiniz.')
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -39,93 +36,50 @@ client.once('ready', async () => {
             Routes.applicationCommands(client.user.id),
             { body: commands },
         );
-        console.log('Tüm Discord Slash komutları yüklendi.');
+        console.log('Slash komutları başarıyla yüklendi.');
     } catch (error) {
         console.error(error);
     }
 });
 
-// --- 2. DISCORD ETKİLEŞİMLERİ (KOMUTLAR & BUTONLAR) ---
+// --- 2. DİSCORD KOMUTU VE YETKİLENDİRME BUTONU ---
 client.on('interactionCreate', async interaction => {
-    if (interaction.isChatInputCommand()) {
+    if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === 'aktiflik') {
         const userId = interaction.user.id;
         const guildId = interaction.guild.id;
 
-        if (interaction.commandName === 'aktifligim') {
-            const dailyLogs = db.fetch(`sessions_daily_${guildId}_${userId}`) || [];
-            const weeklyLogs = db.fetch(`sessions_weekly_${guildId}_${userId}`) || [];
-            
-            const totalDailyMin = dailyLogs.reduce((acc, l) => acc + l.duration, 0);
-            const totalWeeklyMin = weeklyLogs.reduce((acc, l) => acc + l.duration, 0);
+        const dailyLogs = db.fetch(`sessions_daily_${guildId}_${userId}`) || [];
+        const weeklyLogs = db.fetch(`sessions_weekly_${guildId}_${userId}`) || [];
+        
+        const totalDailyMin = dailyLogs.reduce((acc, l) => acc + l.duration, 0);
+        const totalWeeklyMin = weeklyLogs.reduce((acc, l) => acc + l.duration, 0);
 
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('view_leaderboard')
-                        .setLabel('🏆 Ekip Sıralamasını Gör')
-                        .setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder()
-                        .setLabel('🌐 Cloud Web Dashboard')
-                        .setStyle(ButtonStyle.Link)
-                        .setUrl(process.env.DOMAIN || 'http://localhost:3000')
-                );
+        // Discord OAuth2 Bot / Uygulama Yetkilendirme Linki
+        // Butona basıldığında doğrudan Discord'un "Yetkilendir" ekranı açılır
+        const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${process.env.CLIENT_ID}&permissions=8&scope=bot%20applications.commands&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URI)}&response_type=code`;
 
-            await interaction.reply({
-                content: `📊 **Letra XII Kişisel Aktiflik Karnen**:\n\n` +
-                         `⏱️ **Bugünkü Süre:** ${Math.floor(totalDailyMin / 60)} Saat ${totalDailyMin % 60} Dk\n` +
-                         `📅 **Haftalık Süre:** ${Math.floor(totalWeeklyMin / 60)} Saat ${totalWeeklyMin % 60} Dk\n`,
-                components: [row],
-                ephemeral: true
-            });
-        } 
-        else if (interaction.commandName === 'ekip-siralama') {
-            const members = interaction.guild.members.cache.filter(m => !m.user.bot);
-            let desc = '';
-            
-            const memberList = members.map(m => {
-                const logs = db.fetch(`sessions_daily_${guildId}_${m.id}`) || [];
-                const totalMin = logs.reduce((acc, l) => acc + l.duration, 0);
-                return { name: m.user.tag, totalMin };
-            }).sort((a, b) => b.totalMin - a.totalMin).slice(0, 10);
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setLabel('🔒 Botu / Sistemi Yetkilendir')
+                    .setStyle(ButtonStyle.Link)
+                    .setUrl(authUrl)
+            );
 
-            memberList.forEach((m, index) => {
-                desc += `**#${index + 1}** - ${m.name} : \`${Math.floor(m.totalMin / 60)}s ${m.totalMin % 60}dk\`\n`;
-            });
-
-            const embed = new EmbedBuilder()
-                .setTitle('🏆 Letra XII Günlük Aktiflik Liderlik Tablosu')
-                .setDescription(desc || 'Henüz veri bulunmuyor.')
-                .setColor('#3b82f6')
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed], ephemeral: true });
-        }
-    } 
-    else if (interaction.isButton()) {
-        if (interaction.customId === 'view_leaderboard') {
-            const guildId = interaction.guild.id;
-            const members = interaction.guild.members.cache.filter(m => !m.user.bot);
-            
-            let desc = '';
-            const memberList = members.map(m => {
-                const logs = db.fetch(`sessions_daily_${guildId}_${m.id}`) || [];
-                const totalMin = logs.reduce((acc, l) => acc + l.duration, 0);
-                return { name: m.user.tag, totalMin };
-            }).sort((a, b) => b.totalMin - a.totalMin).slice(0, 5);
-
-            memberList.forEach((m, index) => {
-                desc += `**#${index + 1}** - ${m.name} : \`${Math.floor(m.totalMin / 60)}s ${m.totalMin % 60}dk\`\n`;
-            });
-
-            await interaction.update({
-                content: `🏆 **Anlık Günlük Sıralama Özeti:**\n\n${desc}`,
-                components: interaction.message.components
-            });
-        }
+        await interaction.reply({
+            content: `📊 **Letra XII Aktiflik Durumun**:\n\n` +
+                     `⏱️ **Bugünkü Süre:** ${Math.floor(totalDailyMin / 60)} Saat ${totalDailyMin % 60} Dk\n` +
+                     `📅 **Haftalık Süre:** ${Math.floor(totalWeeklyMin / 60)} Saat ${totalWeeklyMin % 60} Dk\n\n` +
+                     `*Sistemi onaylamak / yetkilendirmek için aşağıdaki butonu kullanabilirsin:*`,
+            components: [row],
+            ephemeral: true
+        });
     }
 });
 
-// --- 3. KUSURSUZ FIVEM / LETRA XII RPC TAKİP MOTORU ---
+// --- 3. FIVEM / LETRA XII RPC TAKİP MOTORU ---
 client.on('presenceUpdate', (oldPresence, newPresence) => {
     if (!newPresence || !newPresence.member || newPresence.user.bot) return;
 
@@ -173,24 +127,17 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
     }
 });
 
-// --- 4. CLOUD EXPRESS WEB DASHBOARD & OAUTH2 ---
+// --- 4. YÖNETİCİLER İÇİN WEB DASHBOARD & OAUTH2 ---
 const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'letra_cloud_secret_key',
+    secret: process.env.SESSION_SECRET || 'letra_admin_secret',
     resave: false,
     saveUninitialized: false
 }));
 
-// OAuth2 Giriş Yolu
-app.get('/login', (req, res) => {
-    res.redirect(`https://discord.com/api/oauth2/authorize?client_id=${process.env.CLIENT_ID}&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URI)}&response_type=code&scope=identify%20guilds`);
-});
-
-// OAuth2 Callback
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.redirect('/');
@@ -221,14 +168,13 @@ app.get('/callback', async (req, res) => {
     }
 });
 
-// Ana Sayfa
 app.get('/', (req, res) => {
     res.render('index', { user: req.session.user });
 });
 
-// Cloud Yönetim Paneli (Dashboard)
+// Yönetici Web Paneli
 app.get('/dashboard', (req, res) => {
-    if (!req.session.user) return res.redirect('/login');
+    if (!req.session.user) return res.redirect('/');
 
     const filter = req.query.filter || 'daily';
     const guilds = client.guilds.cache.map(g => {
@@ -263,7 +209,7 @@ app.get('/dashboard', (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000, () => {
-    console.log(`Cloud Web Dashboard aktif: http://localhost:${process.env.PORT || 3000}`);
+    console.log('Yönetici Web Paneli yayında.');
 });
 
 client.login(process.env.TOKEN);
