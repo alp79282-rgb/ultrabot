@@ -74,7 +74,7 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 app.use(session({
-    secret: 'letra-xii-secret-key-987654',
+    secret: 'ventra-secret-key-987654',
     resave: false,
     saveUninitialized: false
 }));
@@ -121,7 +121,7 @@ function addPointToUser(member) {
     db[key] = userData;
     writeDB(db);
     
-    console.log(`[LETRA PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+    console.log(`[VENTRA PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
 }
 
 // Web Paneli Rotası (Günlük, Haftalık, Aylık, Total destekli)
@@ -171,7 +171,7 @@ client.once('ready', async () => {
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
-                .setDescription('Sunucudaki Letra aktiflik ve süre liderlik tablosunu görüntülersiniz.')
+                .setDescription('Sunucudaki Ventra aktiflik ve süre liderlik tablosunu görüntülersiniz.')
                 .toJSON()
         ];
 
@@ -181,7 +181,7 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // HER 10 SANİYEDE BİR: İsmi içinde "letra" geçen aktiviteyi kontrol et
+    // HER 10 SANİYEDE BİR: İsmi içinde "ventra" geçen aktiviteyi kontrol et
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -192,13 +192,13 @@ client.once('ready', async () => {
             guild.members.cache.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
-                const isPlayingLetra = member.presence.activities.some(act => {
+                const isPlayingVentra = member.presence.activities.some(act => {
                     if (!act || act.type !== 0) return false; // Tür 0: Oynuyor
                     const gameName = act.name.toLowerCase();
-                    return gameName.includes('letra');
+                    return gameName.includes('ventra');
                 });
                 
-                if (isPlayingLetra) {
+                if (isPlayingVentra) {
                     addPointToUser(member);
                 }
             });
@@ -236,12 +236,12 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('🏆 Letra - Detaylı Aktiflik Sıralaması')
+                .setTitle('🏆 Ventra - Detaylı Aktiflik Sıralaması')
                 .setDescription('Sunucudaki oyuncuların Günlük, Haftalık, Aylık ve Toplam istatistikleri:')
                 .setTimestamp();
 
             if (leaderboard.length === 0) {
-                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Letra puanı bulunmuyor.' });
+                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Ventra puanı bulunmuyor.' });
             } else {
                 let finalDesc = '';
                 leaderboard.forEach((item, index) => {
