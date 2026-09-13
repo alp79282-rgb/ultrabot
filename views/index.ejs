@@ -1,162 +1,202 @@
-require('dotenv').config();
-const { 
-    Client, GatewayIntentBits, Partials, EmbedBuilder, 
-    ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, REST, Routes 
-} = require('discord.js');
-const express = require('express');
-const session = require('express-session');
-const path = require('path');
-const db = require('croxydb');
-
-// ==========================================
-// 1. BOT KURULUMU VE INTENTLER
-// ==========================================
-const client = new Client({
-    intents: Object.values(GatewayIntentBits),
-    partials: [Partials.GuildMember, Partials.Message, Partials.Channel, Partials.Reaction, Partials.User]
-});
-
-// Slash Komutlarını Kaydetme
-const commands = [
-    { name: 'ticket-kur', description: 'Sunucuya butonlu destek sistemi kurar.' },
-    { name: 'sil', description: 'Mesajları siler.', options: [{ name: 'miktar', type: 4, description: 'Silinecek miktar', required: true }] },
-    { name: 'ban', description: 'Kullanıcıyı sunucudan yasaklar.', options: [{ name: 'kullanici', type: 6, description: 'Kişi', required: true }] },
-    { name: 'istatistik', description: 'Botun anlık verilerini gösterir.' }
-];
-
-client.once('ready', async () => {
-    console.log(`[🚀 EFSANE BOT] ${client.user.tag} devrede!`);
-    client.user.setActivity('Web Panelden Yönetiliyor', { type: 3 });
-
-    const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-    try {
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('[⚡] Slash komutları Discord API\'ye başarıyla yüklendi!');
-    } catch (error) { console.error(error); }
-});
-
-// ==========================================
-// 2. OTOMATİK SİSTEMLER
-// ==========================================
-client.on('guildMemberAdd', async (member) => {
-    const autoRoleId = db.fetch(`autorole_${member.guild.id}`);
-    const welcomeChannelId = db.fetch(`welcomechannel_${member.guild.id}`);
-
-    if (autoRoleId) member.roles.add(autoRoleId).catch(() => {});
-    if (welcomeChannelId) {
-        const channel = member.guild.channels.cache.get(welcomeChannelId);
-        if (channel) {
-            const embed = new EmbedBuilder()
-                .setTitle("🌌 Yeni Bir Yıldız Düştü!")
-                .setDescription(`Hoş geldin ${member}! Seninle birlikte **${member.guild.memberCount}** kişi olduk.`)
-                .setColor("#8b5cf6").setThumbnail(member.user.displayAvatarURL());
-            channel.send({ embeds: [embed] });
-        }
-    }
-});
-
-client.on('messageCreate', async (message) => {
-    if (message.author.bot || !message.guild) return;
-
-    if (db.fetch(`antiswear_${message.guild.id}`)) {
-        const badWords = ["amk", "aq", "piç", "orospu", "sik"];
-        if (badWords.some(w => message.content.toLowerCase().includes(w)) && !message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-            message.delete().catch(() => {});
-            return message.channel.send(`⚠️ ${message.author}, kelimelerine dikkat et!`).then(m => setTimeout(() => m.delete(), 3000));
-        }
-    }
-
-    const xpKey = `xp_${message.guild.id}_${message.author.id}`;
-    const levelKey = `level_${message.guild.id}_${message.author.id}`;
-    db.add(xpKey, Math.floor(Math.random() * 10) + 5);
-    
-    let xp = db.fetch(xpKey), level = db.fetch(levelKey) || 0, nextXp = (level + 1) * 150;
-    if (xp >= nextXp) {
-        db.add(levelKey, 1);
-        message.channel.send(`🎉 GG ${message.author}! **Seviye ${level + 1}** oldun! 🚀`);
-    }
-});
-
-// ==========================================
-// 3. SLASH KOMUTLAR VE TICKET ETKİLEŞİMİ
-// ==========================================
-client.on('interactionCreate', async (interaction) => {
-    if (interaction.isChatInputCommand()) {
-        await interaction.deferReply({ ephemeral: true });
-
-        if (interaction.commandName === 'ticket-kur') {
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('btn_ticket').setLabel('📩 Destek Talebi Aç').setStyle(ButtonStyle.Success)
-            );
-            const embed = new EmbedBuilder().setTitle('Destek Merkezi').setDescription('Yardıma mı ihtiyacın var? Aşağıdaki butona tıkla.').setColor('#10b981');
-            await interaction.channel.send({ embeds: [embed], components: [row] });
-            return interaction.editReply({ content: '✅ Ticket sistemi bu kanala kuruldu!' });
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= bot ? bot.username : 'Ventra' %> — Next Gen Cloud Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #030712;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+                radial-gradient(at 50% 50%, rgba(15, 23, 42, 0.5) 0px, transparent 100%);
+            background-attachment: fixed;
+            color: #f3f4f6;
         }
 
-        if (interaction.commandName === 'sil') {
-            const miktar = interaction.options.getInteger('miktar');
-            if(!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) return interaction.editReply("Yetkin yok!");
-            await interaction.channel.bulkDelete(miktar, true);
-            return interaction.editReply({ content: `✅ ${miktar} mesaj silindi.` });
+        .claude-glass {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
         }
-    }
 
-    if (interaction.isButton()) {
-        if (interaction.customId === 'btn_ticket') {
-            const channel = await interaction.guild.channels.create({
-                name: `ticket-${interaction.user.username}`,
-                permissionOverwrites: [
-                    { id: interaction.guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-                    { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
-                ]
-            });
-            interaction.reply({ content: `Biletiniz açıldı: ${channel}`, ephemeral: true });
-            channel.send({ content: `${interaction.user}, yetkililer seninle ilgilenecektir.` });
+        .claude-card {
+            background: rgba(31, 41, 55, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-    }
-});
 
-// ==========================================
-// 4. CLOUD STİLİ WEB PANEL API (ÇÖKMEYEN HAFİF SÜRÜM)
-// ==========================================
-const app = express();
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(session({ secret: process.env.SESSION_SECRET || 'gizli', resave: false, saveUninitialized: false }));
+        .claude-card:hover {
+            border-color: rgba(168, 85, 247, 0.4);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 30px -10px rgba(168, 85, 247, 0.3);
+        }
 
-app.get('/', (req, res) => {
-    // Bot henüz hazır değilse güvenli nesne gönder
-    const botData = client.user ? {
-        username: client.user.username,
-        avatarURL: () => client.user.displayAvatarURL()
-    } : {
-        username: 'Efsane Bot',
-        avatarURL: () => null
-    };
+        .glow-btn {
+            background: linear-gradient(135deg, #6366f1, #a855f7);
+            transition: all 0.3s ease;
+        }
 
-    const guilds = client.guilds ? client.guilds.cache.map(g => ({ id: g.id, name: g.name, icon: g.iconURL() })) : [];
-    const guildsCount = client.guilds ? client.guilds.cache.size : 0;
-    const usersCount = client.guilds ? client.guilds.cache.reduce((a, g) => a + (g.memberCount || 0), 0) : 0;
+        .glow-btn:hover {
+            box-shadow: 0 0 25px rgba(168, 85, 247, 0.6);
+            transform: scale(1.01);
+        }
 
-    res.render('index', {
-        bot: botData,
-        guildsCount: guildsCount,
-        usersCount: usersCount,
-        guilds: guilds,
-        db: db
-    });
-});
+        .glow-input {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+        }
 
-app.post('/api/settings/:guildId', (req, res) => {
-    const { guildId } = req.params;
-    const { autoRoleId, welcomeChannelId, antiSwear } = req.body;
-    db.set(`autorole_${guildId}`, autoRoleId || null);
-    db.set(`welcomechannel_${guildId}`, welcomeChannelId || null);
-    db.set(`antiswear_${guildId}`, antiSwear === 'on');
-    res.redirect('/');
-});
+        .glow-input:focus {
+            border-color: #a855f7;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
+            outline: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-10 flex flex-col justify-between">
 
-app.listen(process.env.PORT || 3000, () => console.log(`[🌐 WEB] Panel yayında.`));
-client.login(process.env.TOKEN);
+    <!-- Top Navigation -->
+    <header class="max-w-7xl mx-auto w-full claude-glass rounded-2xl p-5 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+            <div class="relative">
+                <% if(bot && bot.avatarURL()) { %>
+                    <img src="<%= bot.avatarURL() %>" class="w-14 h-14 rounded-xl border border-purple-500/30">
+                <% } else { %>
+                    <div class="w-14 h-14 rounded-xl bg-purple-600/20 flex items-center justify-center border border-purple-500/30"><i class="fa-solid fa-robot text-2xl text-purple-400"></i></div>
+                <% } %>
+                <span class="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-gray-900 rounded-full"></span>
+            </div>
+            <div>
+                <h1 class="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400">
+                    <%= bot ? bot.username : 'Ventra' %> <span class="text-xs px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 font-normal">v2.0 AI Ready</span>
+                </h1>
+                <p class="text-xs text-gray-400">Cloud Automation & Management Engine</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-6 bg-black/30 px-6 py-3 rounded-xl border border-white/5">
+            <div class="text-center">
+                <p class="text-[10px] uppercase font-semibold text-gray-500 tracking-wider">Sunucular</p>
+                <p class="text-xl font-bold text-white"><%= guildsCount %></p>
+            </div>
+            <div class="w-[1px] h-8 bg-white/10"></div>
+            <div class="text-center">
+                <p class="text-[10px] uppercase font-semibold text-gray-500 tracking-wider">Kullanıcılar</p>
+                <p class="text-xl font-bold text-white"><%= usersCount %></p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-8 mb-auto">
+        
+        <!-- Sidebar: Linked Guilds -->
+        <aside class="space-y-4">
+            <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 px-2">
+                <i class="fa-solid fa-network-wired text-purple-400"></i> Bağlı Sunucular
+            </h2>
+
+            <% if(guilds.length > 0) { %>
+                <% guilds.forEach(guild => { %>
+                    <div class="claude-card p-4 rounded-xl flex items-center justify-between cursor-pointer border-l-2 border-l-purple-500">
+                        <div class="flex items-center gap-3">
+                            <% if(guild.icon) { %>
+                                <img src="<%= guild.icon %>" class="w-10 h-10 rounded-lg">
+                            <% } else { %>
+                                <div class="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center font-bold text-purple-400"><%= guild.name.charAt(0) %></div>
+                            <% } %>
+                            <div>
+                                <h3 class="font-semibold text-sm text-white truncate max-w-[150px]"><%= guild.name %></h3>
+                                <p class="text-[10px] text-emerald-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Senkronize</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-xs text-gray-600"></i>
+                    </div>
+                <% }) %>
+            <% } else { %>
+                <div class="claude-card p-6 rounded-xl text-center text-gray-500 text-sm">Sunucu bulunamadı.</div>
+            <% } %>
+        </aside>
+
+        <!-- Settings Module Panel -->
+        <section class="lg:col-span-2">
+            <% if(guilds.length > 0) { %>
+                <% let gid = guilds[0].id; %>
+                
+                <form action="/api/settings/<%= gid %>" method="POST" class="claude-glass p-8 rounded-2xl relative overflow-hidden space-y-8">
+                    
+                    <div class="flex items-center justify-between border-b border-white/5 pb-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-white flex items-center gap-2"><i class="fa-solid fa-sliders text-indigo-400"></i> Sunucu Modül Yapılandırması</h2>
+                            <p class="text-xs text-gray-400">Değişiklikler anında bot veritabanına işlenir.</p>
+                        </div>
+                    </div>
+
+                    <!-- Input Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-2">
+                            <label class="text-xs font-medium text-gray-300">Oto-Rol ID</label>
+                            <input type="text" name="autoRoleId" value="<%= db.fetch(`autorole_${gid}`) || '' %>" placeholder="Örn: 1049283920..." class="w-full p-3 rounded-xl glow-input text-sm">
+                            <p class="text-[10px] text-gray-500">Katılan üyelere otomatik tanımlanır.</p>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="text-xs font-medium text-gray-300">Karşılama Kanalı ID</label>
+                            <input type="text" name="welcomeChannelId" value="<%= db.fetch(`welcomechannel_${gid}`) || '' %>" placeholder="Örn: 984572910..." class="w-full p-3 rounded-xl glow-input text-sm">
+                            <p class="text-[10px] text-gray-500">Resimli Hoş Geldin mesajı gönderilir.</p>
+                        </div>
+                    </div>
+
+                    <!-- Toggle Toggles -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                        
+                        <div class="p-4 rounded-xl bg-black/20 border border-white/5 flex items-center justify-between">
+                            <div>
+                                <h4 class="text-sm font-semibold text-white">Küür Engeli (Auto-Mod)</h4>
+                                <p class="text-[10px] text-gray-400">Mesajları anında tarar ve siler.</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" name="antiSwear" class="sr-only peer" <%= db.fetch(`antiswear_${gid}`) ? 'checked' : '' %>>
+                                <div class="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+
+                        <div class="p-4 rounded-xl bg-black/20 border border-white/5 flex items-center justify-between">
+                            <div>
+                                <h4 class="text-sm font-semibold text-white">Link Engeli (Anti-Spam)</h4>
+                                <p class="text-[10px] text-gray-400">İzinsiz reklam paylaşımını engeller.</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" name="antiLink" class="sr-only peer" <%= db.fetch(`antilink_${gid}`) ? 'checked' : '' %>>
+                                <div class="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                            </label>
+                        </div>
+
+                    </div>
+
+                    <button type="submit" class="w-full py-4 rounded-xl font-bold text-white glow-btn flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-bolt"></i> Ayarları Yapılandır ve Senkronize Et
+                    </button>
+                </form>
+            <% } %>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="max-w-7xl mx-auto w-full text-center text-xs text-gray-600 mt-12 py-4">
+        Ventra Autonomous Discord System — Powered by Render Cloud & Discord.js v14
+    </footer>
+
+</body>
+</html>
