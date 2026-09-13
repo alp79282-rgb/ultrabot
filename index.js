@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
@@ -75,30 +75,11 @@ app.get('/health', (req, res) => {
 client.once('ready', async () => {
     console.log(`[🚀 LETRA CORE] ${client.user.tag} aktif ve görevde!`);
 
+    // Sadece istediğin aktiflikkontrol komutu tanımlandı
     const commands = [
         new SlashCommandBuilder()
-            .setName('aktiflik')
-            .setDescription('Ekip üyelerinin toplam aktiflik sürelerini listeler.')
-            .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
-        
-        new SlashCommandBuilder()
-            .setName('aktiflik-sifirla')
-            .setDescription('Belirtilen kullanıcının aktiflik süresini sıfırlar.')
-            .addUserOption(option => 
-                option.setName('kullanici')
-                .setDescription('Süresi sıfırlanacak üye')
-                .setRequired(true)
-            )
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-
-        new SlashCommandBuilder()
             .setName('aktiflikkontrol')
-            .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.'),
-
-        new SlashCommandBuilder()
-            .setName('ticket-kur')
-            .setDescription('Destek (Ticket) panelini bu kanala kurar.')
-            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+            .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.')
     ].map(command => command.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -108,13 +89,13 @@ client.once('ready', async () => {
             Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands },
         );
-        console.log('[⚡] Slash komutları Discord sistemine başarıyla kaydedildi!');
+        console.log('[⚡] /aktiflikkontrol komutu Discord sistemine başarıyla kaydedildi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
 });
 
-// Oyuncu aktivite takibi
+// Oyuncu aktivite takibi (FiveM / Oyunlar)
 client.on('presenceUpdate', (oldPresence, newPresence) => {
     if (!newPresence || !newPresence.member) return;
     
@@ -131,52 +112,17 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
 // Slash Komut ve Buton Etkileşim Yönetimi
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
-        const { commandName } = interaction;
-
-        if (commandName === 'aktiflik') {
+        if (interaction.commandName === 'aktiflikkontrol') {
             await interaction.deferReply({ ephemeral: true });
-            let rawData = db.all();
-            let allData = Array.isArray(rawData) ? rawData : [];
-
-            const records = allData
-                .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
-                .map(item => ({
-                    userId: item.ID.replace('aktiflik_', ''),
-                    time: item.data
-                }))
-                .sort((a, b) => b.time - a.time)
-                .slice(0, 10);
-
-            const embed = new EmbedBuilder()
-                .setColor('#4f46e5')
-                .setTitle('📊 Letra XII - Aktiflik İstatistikleri')
-                .setDescription(records.length > 0 ? records.map((r, index) => `**${index + 1}.** <@${r.userId}> - \`${r.time} Puan/Süre\``).join('\n') : 'Henüz aktiflik verisi bulunmuyor.')
-                .setFooter({ text: 'Letra XII Aktiflik Takip Sistemi' })
-                .setTimestamp();
-
-            await interaction.editReply({ embeds: [embed] });
-        }
-
-        if (commandName === 'aktiflik-sifirla') {
-            await interaction.deferReply({ ephemeral: true });
-            const targetUser = interaction.options.getUser('kullanici');
-            db.delete(`aktiflik_${targetUser.id}`);
-
-            await interaction.editReply({
-                content: `✅ <@${targetUser.id}> adlı kullanıcının aktiflik süresi başarıyla sıfırlandı.`
-            });
-        }
-
-        if (commandName === 'aktiflikkontrol') {
-            await interaction.deferReply({ ephemeral: true });
+            
             const userId = interaction.user.id;
             const userScore = db.fetch(`aktiflik_${userId}`) || 0;
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('👤 Aktiflik Durum Kontrolü')
-                .setDescription(`Merhaba <@${userId}>!\n\nŞu anki kayıtlı aktiflik puanınız/süreniz: **${userScore}**\n\nDurumunuzu onaylamak ve sisteme kaydetmek için aşağıdaki **Aktiflik Onayla** butonuna tıklayabilirsiniz.`)
-                .setFooter({ text: 'Letra XII Güvenli Takip' })
+                .setTitle('👤 FiveM / Aktiflik Durum Kontrolü')
+                .setDescription(`Merhaba <@${userId}>!\n\nŞu anki kayıtlı aktiflik süreniz/puanınız: **${userScore}**\n\nDurumunuzu onaylamak ve sisteme kaydetmek için aşağıdaki **Aktiflik Onayla** butonuna tıklayabilirsiniz.`)
+                .setFooter({ text: 'Letra XII Aktiflik Takip' })
                 .setTimestamp();
 
             const row = new ActionRowBuilder().addComponents(
@@ -188,29 +134,6 @@ client.on('interactionCreate', async interaction => {
             );
 
             await interaction.editReply({ embeds: [embed], components: [row] });
-        }
-
-        if (commandName === 'ticket-kur') {
-            await interaction.deferReply({ ephemeral: true });
-
-            const embed = new EmbedBuilder()
-                .setColor('#6366f1')
-                .setTitle('🎫 Letra XII - Destek Sistemi')
-                .setDescription('Sunucumuzda herhangi bir konuda destek almak, soru sormak veya bildirimde bulunmak için aşağıdaki **Destek Talebi Oluştur** butonuna tıklayabilirsiniz.')
-                .setFooter({ text: 'Letra XII Destek Ekibi' })
-                .setTimestamp();
-
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('create_ticket_btn')
-                    .setLabel('Destek Talebi Oluştur')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('🎫')
-            );
-
-            // Komutun kullanıldığı kanala ticket panelini gönderir
-            await interaction.channel.send({ embeds: [embed], components: [row] });
-            await interaction.editReply({ content: '✅ Destek paneli bu kanala başarıyla kuruldu!' });
         }
     } 
     else if (interaction.isButton()) {
@@ -225,60 +148,6 @@ client.on('interactionCreate', async interaction => {
                 .setTimestamp();
 
             await interaction.update({ embeds: [successEmbed], components: [] });
-        }
-
-        if (interaction.customId === 'create_ticket_btn') {
-            const guild = interaction.guild;
-            const member = interaction.member;
-
-            await interaction.reply({ content: '⏳ Destek kanalı oluşturuluyor, lütfen bekleyin...', ephemeral: true });
-
-            try {
-                // Her kullanıcıya özel ticket kanalı açma
-                const ticketChannel = await guild.channels.create({
-                    name: `ticket-${member.user.username}`,
-                    type: 0, // GuildText
-                    permissionOverwrites: [
-                        {
-                            id: guild.id, // @everyone göremez
-                            deny: ['ViewChannel'],
-                        },
-                        {
-                            id: member.id, // Ticket açan kullanıcı görebilir ve yazabilir
-                            allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
-                        },
-                    ],
-                });
-
-                const ticketEmbed = new EmbedBuilder()
-                    .setColor('#10b981')
-                    .setTitle(`🎫 Destek Talebi - ${member.user.tag}`)
-                    .setDescription('Yetkililer kısa süre içinde sizinle ilgilenecektir. Talebi kapatmak için aşağıdaki butona basabilirsiniz.')
-                    .setTimestamp();
-
-                const closeRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('close_ticket_btn')
-                        .setLabel('Talebi Kapat')
-                        .setStyle(ButtonStyle.Danger)
-                        .setEmoji('🔒')
-                );
-
-                await ticketChannel.send({ content: `<@${member.id}>`, embeds: [ticketEmbed], components: [closeRow] });
-                await interaction.editReply({ content: `✅ Destek kanalınız başarıyla oluşturuldu: <#${ticketChannel.id}>` });
-            } catch (err) {
-                console.error("Ticket oluşturma hatası:", err);
-                await interaction.editReply({ content: '❌ Destek kanalı oluşturulurken bir hata oluştu!' });
-            }
-        }
-
-        if (interaction.customId === 'close_ticket_btn') {
-            await interaction.reply({ content: '🔒 Destek talebi 5 saniye içinde kapatılıyor...', ephemeral: true });
-            setTimeout(async () => {
-                try {
-                    await interaction.channel.delete();
-                } catch (e) {}
-            }, 5000);
         }
     }
 });
