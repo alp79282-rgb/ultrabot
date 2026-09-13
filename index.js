@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, Options } = require('discord.js');
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
@@ -8,13 +8,18 @@ const db = require('croxydb');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// DİKKAT: Presence verilerinin bellekte tutulması için cache ayarı eklendi!
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildMessages
-    ]
+    ],
+    makeCache: Options.cacheWithLimits({
+        ...Options.DefaultMakeCacheSettings,
+        PresenceManager: Infinity, // Oyun/Durum verilerinin silinmesini önler
+    })
 });
 
 app.use(express.urlencoded({ extended: true }));
@@ -135,14 +140,11 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // HER 10 SANİYEDE BİR: Sunucudaki herkesi doğrudan tara ve oyunda olanların süresini artır
+    // HER 10 SANİYEDE BİR: Etkinlikte görünen herkesin dakikasını artır
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
             if (!guild) return;
-
-            // Üyelerin güncel durumlarını önbelleğe zorla çektir
-            await guild.members.fetch({ withPresences: true }).catch(() => {});
 
             const todayKey = getTodayKey();
             const weekKey = getWeekKey();
@@ -189,7 +191,7 @@ client.once('ready', async () => {
                     userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
 
                     db.set(`stats_${member.id}`, userData);
-                    console.log(`[SÜRE ARTirILDI] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+                    console.log(`[SÜRE ARTIRILDI] ${userData.displayName} | Toplam Puan: ${userData.total}`);
                 }
             });
         } catch (err) {
