@@ -3,10 +3,33 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuild
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
-const db = require('croxydb'); // Dosya yolu vermeden saf tanımlama
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// Bulut uyumlu basit ve kesintisiz JSON Veritabanı Sistemi
+const DB_FILE = path.join(__dirname, 'database.json');
+
+function readDB() {
+    try {
+        if (!fs.existsSync(DB_FILE)) {
+            fs.writeFileSync(DB_FILE, JSON.stringify({}));
+        }
+        const data = fs.readFileSync(DB_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (e) {
+        return {};
+    }
+}
+
+function writeDB(data) {
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+    } catch (e) {
+        console.error("Veritabanı yazma hatası:", e);
+    }
+}
 
 const client = new Client({
     intents: [
@@ -34,7 +57,7 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Puan Formatı (Örn: 15 Puan)
+// Puan Formatı
 function formatPoint(puan) {
     return `${puan || 0} Puan`;
 }
@@ -43,8 +66,10 @@ function formatPoint(puan) {
 function addPointToUser(member) {
     if (!member || !member.user) return;
 
+    let db = readDB();
     const key = `stats_${member.id}`;
-    let userData = db.get(key) || {
+    
+    let userData = db[key] || {
         id: member.id,
         username: member.user.username,
         displayName: member.displayName || member.user.globalName || member.user.username,
@@ -57,31 +82,25 @@ function addPointToUser(member) {
     userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 }) || 'https://cdn.discordapp.com/embed/avatars/0.png';
     userData.total = (userData.total || 0) + 1;
 
-    db.set(key, userData);
-    console.log(`[COUNTER PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+    db[key] = userData;
+    writeDB(db);
+    
+    console.log(`[BAŞARIYla KAYDEDİLDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
 }
 
 // Web Paneli Rotası
 app.get('/', async (req, res) => {
     try {
-        let rawData = db.all();
-        let allData = [];
-
-        if (Array.isArray(rawData)) {
-            allData = rawData.map(item => ({ ID: item.ID || item.key, data: item.data || item.value }));
-        } else if (rawData && typeof rawData === 'object') {
-            allData = Object.entries(rawData).map(([ID, val]) => ({ ID, data: typeof val === 'object' ? (val.data || val.value) : val }));
-        }
-
-        const activeRecords = allData
-            .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('stats_'))
-            .map(item => {
-                const uData = item.data || {};
+        let db = readDB();
+        const activeRecords = Object.keys(db)
+            .filter(key => key.startsWith('stats_'))
+            .map(key => {
+                const uData = db[key] || {};
                 const totalPoints = uData.total || 0;
                 const formattedPoint = formatPoint(totalPoints);
 
                 return {
-                    userId: uData.id || item.ID.replace('stats_', ''),
+                    userId: uData.id || key.replace('stats_', ''),
                     username: uData.username || 'Oyuncu',
                     displayName: uData.displayName || uData.username || 'Oyuncu',
                     avatar: uData.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png',
@@ -162,21 +181,13 @@ client.on('interactionCreate', async interaction => {
         if (interaction.commandName === 'aktiflikbot') {
             await interaction.deferReply().catch(() => {});
 
-            let rawData = db.all();
-            let allData = [];
-
-            if (Array.isArray(rawData)) {
-                allData = rawData.map(item => ({ ID: item.ID || item.key, data: item.data || item.value }));
-            } else if (rawData && typeof rawData === 'object') {
-                allData = Object.entries(rawData).map(([ID, val]) => ({ ID, data: typeof val === 'object' ? (val.data || val.value) : val }));
-            }
-
-            const leaderboard = allData
-                .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('stats_'))
-                .map(item => {
-                    const uData = item.data || {};
+            let db = readDB();
+            const leaderboard = Object.keys(db)
+                .filter(key => key.startsWith('stats_'))
+                .map(key => {
+                    const uData = db[key] || {};
                     return {
-                        userId: uData.id || item.ID.replace('stats_', ''),
+                        userId: uData.id || key.replace('stats_', ''),
                         displayName: uData.displayName || uData.username || 'Oyuncu',
                         total: uData.total || 0
                     };
