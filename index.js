@@ -48,7 +48,7 @@ function getWeekKey() {
     return `${date.getUTCFullYear()}-W${weekNo}`;
 }
 
-// Tam Sapmasız Süre Hesaplama (Her 1 puan = 10 saniye)
+// Süre Hesaplama (1 puan = 10 saniye)
 function formatTime(puan) {
     if (!puan || puan <= 0) return '0 dk';
     const toplamSaniye = puan * 10;
@@ -135,25 +135,27 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // ARKA PLAN TARAMASI (Her 10 saniyede bir)
+    // ARKA PLAN TARAMASI (Her 10 saniyede bir - Kesintisiz Güncelleme)
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
             if (!guild) return;
 
-            const members = await guild.members.fetch({ withPresences: true }).catch(() => null);
+            // Üyeleri ve presenceları zorla cache'e çektiriyoruz
+            const members = await guild.members.fetch({ force: true }).catch(() => null);
             if (!members) return;
 
             const todayKey = getTodayKey();
             const weekKey = getWeekKey();
             const monthKey = getMonthKey();
 
-            members.forEach(member => {
+            guild.members.cache.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
                 member.presence.activities.forEach(act => {
                     if (act && act.name) {
                         const name = act.name.toLowerCase();
+                        // CS2 veya Letra içeren oyun durumlarını yakalar
                         if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
                             
                             let userData = db.get(`stats_${member.id}`) || {
@@ -183,6 +185,7 @@ client.once('ready', async () => {
                             userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
 
                             db.set(`stats_${member.id}`, userData);
+                            console.log(`[SÜRE EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
                         }
                     }
                 });
