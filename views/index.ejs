@@ -3,38 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= botName %> Panel</title>
+    <title><%= bot ? bot.username : 'Efsane Bot' %> - Yönetim Paneli</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { glass: 'rgba(255, 255, 255, 0.05)', glassBorder: 'rgba(255, 255, 255, 0.1)' } } }
+        }
+    </script>
     <style>
-        body { background: #0f172a; color: white; font-family: sans-serif; padding: 20px; }
-        .card { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; width: 400px; }
-        input { width: 100%; padding: 8px; margin: 8px 0; background: #334155; border: none; color: white; border-radius: 4px; }
-        button { background: #0284c7; color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background: #020617; background-image: radial-gradient(circle at top right, #1e1b4b, #020617), radial-gradient(circle at bottom left, #0f172a, #020617); color: white; min-height: 100vh; }
+        .glass-card { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.08); border-radius: 1rem; transition: transform 0.3s ease, box-shadow 0.3s ease; }
+        .glass-card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px -10px rgba(139, 92, 246, 0.3); }
+        .input-glow { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; transition: all 0.3s; }
+        .input-glow:focus { outline: none; border-color: #8b5cf6; box-shadow: 0 0 15px rgba(139,92,246,0.4); }
+        .btn-gradient { background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899); background-size: 200% 200%; animation: gradientMove 3s ease infinite; transition: all 0.3s; }
+        .btn-gradient:hover { transform: scale(1.02); box-shadow: 0 0 20px rgba(168, 85, 247, 0.5); }
+        @keyframes gradientMove { 0% {background-position: 0% 50%;} 50% {background-position: 100% 50%;} 100% {background-position: 0% 50%;} }
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: #020617; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
     </style>
 </head>
-<body>
-    <h1><%= botName %> Dashboard</h1>
-    <p>Aktif Sunucu Sayısı: <%= guildsCount %></p>
+<body class="overflow-x-hidden p-6 md:p-12">
 
-    <div class="card">
-        <h3>Sunucu Ayarları</h3>
-        <% if(guilds.length > 0) { %>
-            <form action="/api/settings/<%= guilds[0].id %>" method="POST">
-                <input type="text" name="autoRoleId" placeholder="Oto-Rol ID">
-                <input type="text" name="welcomeChannelId" placeholder="Hoş Geldin Kanal ID">
-                <label><input type="checkbox" name="antiSwear"> Küfür Engeli Aç</label><br><br>
-                <button type="submit">Kaydet</button>
-            </form>
-        <% } %>
-    </div>
+    <!-- Header -->
+    <header class="max-w-6xl mx-auto flex items-center justify-between mb-12 glass-card p-6">
+        <div class="flex items-center gap-4">
+            <% if(bot && bot.avatarURL()) { %>
+                <img src="<%= bot.avatarURL() %>" class="w-16 h-16 rounded-full border-2 border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+            <% } %>
+            <div>
+                <h1 class="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400"><%= bot ? bot.username : 'Efsane Bot' %></h1>
+                <p class="text-gray-400 text-sm">Bulut Tabanlı Yönetim Merkezi</p>
+            </div>
+        </div>
+        <div class="hidden md:flex gap-6 text-center">
+            <div><p class="text-xs text-gray-400 uppercase tracking-wider">Sunucu</p><p class="text-2xl font-bold text-white"><%= guildsCount %></p></div>
+            <div><p class="text-xs text-gray-400 uppercase tracking-wider">Kullanıcı</p><p class="text-2xl font-bold text-white"><%= usersCount %></p></div>
+        </div>
+    </header>
 
-    <div class="card">
-        <h3>Buton Rol Gönder</h3>
-        <form action="/api/send-role-panel" method="POST">
-            <input type="text" name="channelId" placeholder="Kanal ID">
-            <input type="text" name="roleId" placeholder="Verilecek Rol ID">
-            <input type="text" name="buttonLabel" placeholder="Buton Yazısı">
-            <button type="submit">Paneli Gönder</button>
-        </form>
-    </div>
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <!-- Sidebar: Sunucular -->
+        <aside class="space-y-4">
+            <h2 class="text-xl font-semibold mb-4 flex items-center gap-2"><i class="fa-solid fa-server text-indigo-400"></i> Aktif Sunucular</h2>
+            <% if(guilds.length > 0) { %>
+                <% guilds.forEach(guild => { %>
+                    <div class="glass-card p-4 flex items-center gap-4 cursor-pointer border-l-4 border-l-purple-500">
+                        <% if(guild.icon) { %>
+                            <img src="<%= guild.icon %>" class="w-12 h-12 rounded-lg">
+                        <% } else { %>
+                            <div class="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center font-bold text-lg"><%= guild.name.charAt(0) %></div>
+                        <% } %>
+                        <div class="font-semibold truncate"><%= guild.name %></div>
+                    </div>
+                <% }) %>
+            <% } else { %>
+                <p class="text-gray-400 text-sm">Henüz bir sunucuda değil.</p>
+            <% } %>
+        </aside>
+
+        <!-- Ayarlar Paneli -->
+        <section class="lg:col-span-2 space-y-6">
+            <% if(guilds.length > 0) { %>
+                <% let gid = guilds[0].id; %>
+                
+                <form action="/api/settings/<%= gid %>" method="POST" class="glass-card p-8 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-purple-600 rounded-full blur-[80px] opacity-30"></div>
+                    <div class="absolute bottom-0 left-0 w-32 h-32 bg-indigo-600 rounded-full blur-[80px] opacity-20"></div>
+
+                    <h2 class="text-2xl font-bold mb-6 flex items-center gap-2 relative z-10"><i class="fa-solid fa-sliders text-pink-400"></i> Genel Modüller</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                        <!-- Oto Rol -->
+                        <div>
+                            <label class="block text-sm text-gray-300 mb-2 font-medium">Oto-Rol ID</label>
+                            <input type="text" name="autoRoleId" value="<%= db.fetch(`autorole_${gid}`) || '' %>" placeholder="Örn: 1049283..." class="w-full p-3 rounded-lg input-glow">
+                            <p class="text-xs text-gray-500 mt-1">Sunucuya girene otomatik verilecek rol.</p>
+                        </div>
+
+                        <!-- Hoş Geldin -->
+                        <div>
+                            <label class="block text-sm text-gray-300 mb-2 font-medium">Karşılama Kanalı ID</label>
+                            <input type="text" name="welcomeChannelId" value="<%= db.fetch(`welcomechannel_${gid}`) || '' %>" placeholder="Örn: 984572..." class="w-full p-3 rounded-lg input-glow">
+                            <p class="text-xs text-gray-500 mt-1">Resimli ve özel giriş mesajları.</p>
+                        </div>
+                    </div>
+
+                    <!-- Toggle: Oto Mod -->
+                    <div class="mt-8 flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5 relative z-10">
+                        <div>
+                            <h3 class="font-bold text-white flex items-center gap-2"><i class="fa-solid fa-shield-halved text-green-400"></i> AI Oto-Moderatör</h3>
+                            <p class="text-xs text-gray-400">Küfürleri algılar ve anında siler.</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="antiSwear" class="sr-only peer" <%= db.fetch(`antiswear_${gid}`) ? 'checked' : '' %>>
+                            <div class="w-14 h-7 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r from-purple-500 to-pink-500"></div>
+                        </label>
+                    </div>
+
+                    <button type="submit" class="mt-8 w-full py-4 rounded-xl font-bold text-white text-lg btn-gradient relative z-10 shadow-lg">
+                        <i class="fa-solid fa-cloud-arrow-up mr-2"></i> Buluta Kaydet ve Senkronize Et
+                    </button>
+                </form>
+
+                <!-- Hazır Sistemler Bilgisi -->
+                <div class="glass-card p-6 mt-6 border-l-4 border-l-indigo-500">
+                    <h3 class="font-bold text-lg mb-2"><i class="fa-solid fa-bolt text-yellow-400"></i> Aktif Çekirdek Sistemler</h3>
+                    <ul class="text-sm text-gray-400 space-y-2">
+                        <li><i class="fa-solid fa-check text-green-400 mr-2"></i> <b>XP / Seviye Sistemi:</b> Arka planda çalışıyor. Üyeler mesaj yazdıkça seviye atlar.</li>
+                        <li><i class="fa-solid fa-check text-green-400 mr-2"></i> <b>Ticket Altyapısı:</b> Discord üzerinden <code>/ticket-kur</code> yazarak anında kullanabilirsiniz.</li>
+                        <li><i class="fa-solid fa-check text-green-400 mr-2"></i> <b>Gelişmiş Moderasyon:</b> <code>/sil</code> ve <code>/ban</code> komutları aktif.</li>
+                    </ul>
+                </div>
+
+            <% } %>
+        </section>
+    </main>
+
 </body>
 </html>
