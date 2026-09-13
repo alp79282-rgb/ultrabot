@@ -75,21 +75,26 @@ app.get('/health', (req, res) => {
 client.once('ready', async () => {
     console.log(`[🚀 LETRA CORE] ${client.user.tag} aktif ve görevde!`);
 
-    // Sadece istediğin aktiflikkontrol komutu tanımlandı
+    // Sadece istediğin aktiflikkontrol komutu
     const commands = [
         new SlashCommandBuilder()
             .setName('aktiflikkontrol')
             .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.')
     ].map(command => command.toJSON());
 
-    const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+    const rest = new REST({version: '10'}).setToken(process.env.TOKEN);
+    const TARGET_GUILD_ID = '1530348723958321262';
 
     try {
+        // Önce eski global komutları temizle (isteğe bağlı güvenlik önlemi)
+        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: [] });
+
+        // Komutu doğrudan senin verdiğin sunucuya özel anında kaydet
         await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, TARGET_GUILD_ID),
             { body: commands },
         );
-        console.log('[⚡] /aktiflikkontrol komutu Discord sistemine başarıyla kaydedildi!');
+        console.log('[⚡] /aktiflikkontrol komutu belirtilen sunucuya anında yüklendi ve eski komutlar temizlendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
