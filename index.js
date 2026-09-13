@@ -169,15 +169,15 @@ client.once('ready', async () => {
                 .toJSON()
         ];
 
-        // 1. Önce eski kalıntıları engellemek için Global komutları tamamen boşaltıyoruz:
+        // 1. Önce eski global komut kalıntılarını tamamen havaya uçuruyoruz
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
 
-        // 2. Sunucudaki komutları sıfırlayıp sadece yeni komutları yüklüyoruz:
+        // 2. Sunucuya ait eski/yeni ne varsa sıfırlayıp sadece yeni komutları basıyoruz
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
         
-        console.log('[BAŞARILI] Komutlar sıfırlandı ve sadece /aktiflik ile /topaktiflik yüklendi!');
+        console.log('[KESİN TEMİZLİK & YÜKLEME] Eski kalıntılar silindi, yeni komutlar aktif!');
     } catch (error) {
-        console.error("Komut yükleme hatası:", error);
+        console.error("Komut sıfırlama/yükleme hatası:", error);
     }
 
     setInterval(async () => {
