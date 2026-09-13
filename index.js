@@ -41,10 +41,12 @@ app.get('/', async (req, res) => {
         }
     } catch (e) {}
 
-    // Veritabanından kayıtlı aktiflik sürelerini çekiyoruz
-    const allData = db.all() || [];
+    // Veritabanından verileri güvenli bir şekilde dizi olarak çekiyoruz
+    let rawData = db.all();
+    let allData = Array.isArray(rawData) ? rawData : [];
+
     const activeRecords = allData
-        .filter(item => item.ID && item.ID.startsWith('aktiflik_'))
+        .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
         .map(item => ({
             userId: item.ID.replace('aktiflik_', ''),
             time: item.data
