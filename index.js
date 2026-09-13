@@ -34,18 +34,9 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Süre Hesaplama (1 puan = 10 saniye)
-function formatTime(puan) {
-    if (!puan || puan <= 0) return '0 dk';
-    const toplamSaniye = puan * 10;
-    const saat = Math.floor(toplamSaniye / 3600);
-    const dakika = Math.floor((toplamSaniye % 3600) / 60);
-
-    let res = [];
-    if (saat > 0) res.push(`${saat} sa`);
-    if (dakika > 0 || saat > 0) res.push(`${dakika} dk`);
-    if (res.length === 0) res.push('0 dk');
-    return res.join(' ');
+// Doğrudan Puan Formatı (10 saniyede 1 puan)
+function formatPoint(puan) {
+    return `${puan || 0} Puan`;
 }
 
 // Puan Ekleme Fonksiyonu
@@ -86,17 +77,17 @@ app.get('/', async (req, res) => {
             .map(item => {
                 const uData = item.data || {};
                 const totalPoints = uData.total || 0;
-                const formattedTime = formatTime(totalPoints);
+                const formattedPoint = formatPoint(totalPoints);
 
                 return {
                     userId: uData.id || item.ID.replace('stats_', ''),
                     username: uData.username || 'Oyuncu',
                     displayName: uData.displayName || uData.username || 'Oyuncu',
                     avatar: uData.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png',
-                    dailyStr: formattedTime,
-                    weeklyStr: formattedTime,
-                    monthlyStr: formattedTime,
-                    totalStr: formattedTime,
+                    dailyStr: formattedPoint,
+                    weeklyStr: formattedPoint,
+                    monthlyStr: formattedPoint,
+                    totalStr: formattedPoint,
                     rawTotal: totalPoints
                 };
             })
@@ -125,7 +116,7 @@ client.once('ready', async () => {
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
-                .setDescription('Sunucudaki Counter aktifliği ve süre liderlik tablosunu görüntülersiniz.')
+                .setDescription('Sunucudaki Counter aktifliği ve puan liderlik tablosunu görüntülersiniz.')
                 .toJSON()
         ];
 
@@ -135,7 +126,7 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // HER 10 SANİYEDE BİR: İsmi "counter" geçen oyunları oynayanların puanını artır
+    // HER 10 SANİYEDE BİR: İsmi "counter" geçen oyunları oynayanlara 1 puan ekle
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -194,25 +185,19 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('🏆 Letra XII - Counter Aktiflik Sıralaması')
-                .setDescription('Sunucudaki en aktif Counter oyuncularının puan tablosu:')
+                .setTitle('🏆 Letra XII - Counter Puan Sıralaması')
+                .setDescription('Sunucudaki en yüksek puanlı Counter oyuncuları:')
                 .setTimestamp();
 
             if (leaderboard.length === 0) {
-                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Counter aktiflik verisi bulunmuyor.' });
+                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Counter puanı bulunmuyor.' });
             } else {
-                let description = '';
-                leaderboard.forEach((item, index) => {
-                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                    description += `${medal} <@${item.userId}> — **formatTime(item.total)** veya **${formatTime(item.total)}**\n`; // Düzeltilmiş format
-                });
-                // Not: Liderlik tablosundaki formatTime fonksiyonu yukarıda tanımlı
                 let finalDesc = '';
                 leaderboard.forEach((item, index) => {
                     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                    finalDesc += `${medal} <@${item.userId}> — **${formatTime(item.total)}**\n`;
+                    finalDesc += `${medal} <@${item.userId}> — **${formatPoint(item.total)}**\n`;
                 });
-                embed.setFields({ name: 'Sıralama', value: finalDesc });
+                embed.addFields({ name: 'Sıralama', value: finalDesc });
             }
 
             await interaction.editReply({ embeds: [embed] }).catch(() => {});
