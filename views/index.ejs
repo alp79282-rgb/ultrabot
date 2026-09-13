@@ -13,7 +13,6 @@
 </head>
 <body class="min-h-screen flex flex-col items-center justify-between p-6">
     <div class="w-full max-w-4xl mx-auto">
-        <!-- Üst Bilgi / Claude Tarzı Header -->
         <header class="flex items-center justify-between border-b border-slate-800 pb-6 mb-8">
             <div class="flex items-center space-x-3">
                 <div class="h-3 w-3 bg-emerald-500 rounded-full animate-pulse"></div>
@@ -24,11 +23,10 @@
             </div>
         </header>
 
-        <!-- İstatistik Kutuları -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
             <div class="glass-card p-5 rounded-2xl shadow-lg">
                 <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Aktif Ekip Üyesi</p>
-                <p class="text-3xl font-bold text-slate-100 mt-2"><%= stats.activeCount %></p>
+                <p class="text-3xl font-bold text-slate-100 mt-2"><%= stats && stats.activeCount ? stats.activeCount : 0 %></p>
             </div>
             <div class="glass-card p-5 rounded-2xl shadow-lg">
                 <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Sunucu Durumu</p>
@@ -36,14 +34,13 @@
             </div>
         </div>
 
-        <!-- Sıralama Listesi -->
         <div class="glass-card rounded-2xl overflow-hidden shadow-xl">
             <div class="px-6 py-4 border-b border-slate-800 bg-slate-900/40">
                 <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Ekip Liderlik Tablosu</h2>
             </div>
             <div class="divide-y divide-slate-800/60">
-                <% if (records.length === 0) { %>
-                    <div class="p-8 text-center text-slate-500 text-sm">Henüz kayıtlı aktiflik verisi bulunmuyor.</div>
+                <% if (!locals.records || records.length === 0) { %>
+                    <div class="p-8 text-center text-slate-500 text-sm">Henüz kaydedilmiş aktiflik verisi bulunmuyor.</div>
                 <% } else { %>
                     <% records.sort((a,b) => b.time - a.time).forEach((rec, index) => { %>
                         <div class="px-6 py-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
@@ -56,7 +53,7 @@
                             </div>
                         </div>
                     <% }) %>
-                <% %>
+                <% } %>
             </div>
         </div>
     </div>
