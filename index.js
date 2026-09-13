@@ -56,16 +56,16 @@ client.once('ready', async () => {
     const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
+        // Komut adını ekrandakine birebir uyarladık: 'aktiflikbot'
         const commands = [
             new SlashCommandBuilder()
-                .setName('aktiflikkontrol')
-                .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.')
+                .setName('aktiflikbot')
+                .setDescription('Kişisel Letra XII oyun sürenizi ve FiveM durumunuzu görüntülersiniz.')
                 .toJSON()
         ];
 
-        // Sadece bu sunucuya temiz bir şekilde kaydediyoruz
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('[BAŞARILI] /aktiflikkontrol komutu sunucuya yüklendi!');
+        console.log('[BAŞARILI] /aktiflikbot komutu sunucuya yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
@@ -85,12 +85,11 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
     } catch (err) {}
 });
 
-// KESİN ÇÖZÜM: Hata patlatmayan interaction yönetimi
 client.on('interactionCreate', async interaction => {
     try {
         if (interaction.isChatInputCommand()) {
-            if (interaction.commandName === 'aktiflikkontrol') {
-                // Discord'a hemen zaman kazandırıyoruz
+            // Kontrol edilecek komut adı güncellendi
+            if (interaction.commandName === 'aktiflikbot') {
                 await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
                 const userId = interaction.user.id;
@@ -116,9 +115,7 @@ client.on('interactionCreate', async interaction => {
                         .setEmoji('✅')
                 );
 
-                await interaction.editReply({ embeds: [embed], components: [row] }).catch((e) => {
-                    console.error("Edit reply hatası:", e);
-                });
+                await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
             }
         } 
         else if (interaction.isButton()) {
