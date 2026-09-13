@@ -1,12 +1,12 @@
 {
   "name": "letra-xi-bot",
-  "version": "2.0.0",
-  "description": "Cloud Dashboard & FiveM Active Tracking Bot",
+  "version": "2.1.0",
+  "description": "Letra XII Active Tracking & Admin Dashboard",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  dependencies: {
+  "dependencies": {
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
