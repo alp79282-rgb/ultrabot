@@ -28,7 +28,6 @@ app.use(session({
     saveUninitialized: false
 }));
 
-// Web Panel Rotaları (Hata Korumalı)
 app.get('/', async (req, res) => {
     try {
         let rawData = db.all();
@@ -57,21 +56,23 @@ client.once('ready', async () => {
     const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
+        // Komut çakışmasını önlemek için ismi '/aktiflik-kontrol' yaptık
         const commands = [
             new SlashCommandBuilder()
-                .setName('aktiflikkontrol')
+                .setName('aktiflik-kontrol')
                 .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.')
                 .toJSON()
         ];
 
+        // Önce temizlik yapıp sonra yeni ismi kaydediyoruz
+        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: [] });
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('[BAŞARILI] /aktiflikkontrol komutu sunucuya yüklendi!');
+        console.log('[BAŞARILI] /aktiflik-kontrol komutu önbelleği kırarak yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
 });
 
-// Güvenli aktivite takip mekanizması
 client.on('presenceUpdate', (oldPresence, newPresence) => {
     try {
         if (!newPresence || !newPresence.member) return;
@@ -82,16 +83,12 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
             let currentCount = db.get(`aktiflik_${userId}`) || 0;
             db.set(`aktiflik_${userId}`, currentCount + 1);
         }
-    } catch (err) {
-        // Arka plan hatalarının botu çökeltmesi engellendi
-    }
+    } catch (err) {}
 });
 
-// Kesin Çözüm: Etkileşim Yönetimi (Zaman Aşımı Korumalı)
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === 'aktiflikkontrol') {
-            // Discord'un 3 saniye kuralını kırmak için anında ephemeral yanıt açıyoruz
+        if (interaction.commandName === 'aktiflik-kontrol') {
             await interaction.deferReply({ ephemeral: true });
 
             try {
