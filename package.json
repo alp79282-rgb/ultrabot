@@ -1,21 +1,17 @@
 {
-  "name": "bot",
-  "version": "1.0.0",
-  "description": "",
+  "name": "letra-xi-bot",
+  "version": "2.0.0",
+  "description": "Cloud Dashboard & FiveM Active Tracking Bot",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "croxydb": "^0.0.27",
-    "discord.js": "^14.27.0",
-    "dotenv": "^17.4.2",
-    "ejs": "^6.0.1",
-    "express": "^5.2.1",
-    "express-session": "^1.19.0"
+  dependencies: {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "node-fetch": "^2.7.0",
+    "croxydb": "^0.2.1"
   }
 }
