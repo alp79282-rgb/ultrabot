@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
@@ -27,6 +27,9 @@ app.use(session({
     resave: false,
     saveUninitialized: false
 }));
+
+// BURAYA EKİP ROLÜNÜN ID'SİNİ YAZACAKSIN
+const EKIP_ROL_ID = 'BURAYA_EKIP_ROL_ID_Gelecek'; 
 
 app.get('/', async (req, res) => {
     try {
@@ -56,28 +59,34 @@ client.once('ready', async () => {
     const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
-        // Komut adını ekrandakine birebir uyarladık: 'aktiflikbot'
         const commands = [
             new SlashCommandBuilder()
-                .setName('aktiflikbot')
-                .setDescription('Kişisel Letra XII oyun sürenizi ve FiveM durumunuzu görüntülersiniz.')
+                .setName('aktiflikistatistik')
+                .setDescription('Letra XII sunucu geneli ekip aktiflik sıralamasını gösterir.')
                 .toJSON()
         ];
 
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('[BAŞARILI] /aktiflikbot komutu sunucuya yüklendi!');
+        console.log('[BAŞARILI] /aktiflikistatistik komutu sunucuya yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
 });
 
-client.on('presenceUpdate', (oldPresence, newPresence) => {
+// Sadece belirtilen EKİP ROLÜNE sahip olanları takip eden presenceUpdate
+client.on('presenceUpdate', async (oldPresence, newPresence) => {
     try {
         if (!newPresence || !newPresence.member) return;
-        const userId = newPresence.member.id;
-        const playingGame = newPresence.activities.find(act => act.type === 0);
+        
+        // Ekip rolü kontrolü (Eğer rolü yoksa direkt yoksay / hiçe say)
+        if (EKIP_ROL_ID !== 'BURAYA_EKIP_ROL_ID_Gelecek' && !newPresence.member.roles.cache.has(EKIP_ROL_ID)) {
+            return; 
+        }
 
-        if (playingGame) {
+        const userId = newPresence.member.id;
+        const playingLetra = newPresence.activities.find(act => act.name && act.name.toLowerCase().includes('letra xii'));
+
+        if (playingLetra) {
             let currentCount = 0;
             try { currentCount = db.get(`aktiflik_${userId}`) || 0; } catch(e){}
             try { db.set(`aktiflik_${userId}`, currentCount + 1); } catch(e){}
@@ -87,51 +96,40 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
 
 client.on('interactionCreate', async interaction => {
     try {
-        if (interaction.isChatInputCommand()) {
-            // Kontrol edilecek komut adı güncellendi
-            if (interaction.commandName === 'aktiflikbot') {
-                await interaction.deferReply({ ephemeral: true }).catch(() => {});
+        if (!interaction.isChatInputCommand()) return;
 
-                const userId = interaction.user.id;
-                let userScore = 0;
-                
-                try {
-                    userScore = db.get(`aktiflik_${userId}`) || 0;
-                } catch (dbErr) {
-                    userScore = 0;
-                }
+        if (interaction.commandName === 'aktiflikistatistik') {
+            await interaction.deferReply().catch(() => {});
 
-                const embed = new EmbedBuilder()
-                    .setColor('#0ea5e9')
-                    .setTitle('👤 Aktiflik Durum Kontrolü')
-                    .setDescription(`Merhaba <@${userId}>!\n\nKayıtlı aktiflik süreniz/puanınız: **${userScore}**\n\nDurumunuzu onaylamak için aşağıdaki butona tıklayabilirsiniz.`)
-                    .setTimestamp();
+            let rawData = db.all();
+            let allData = Array.isArray(rawData) ? rawData : [];
+            
+            const leaderboard = allData
+                .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
+                .map(item => ({
+                    userId: item.ID.replace('aktiflik_', ''),
+                    score: item.data || 0
+                }))
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10);
 
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('aktiflik_onayla_btn')
-                        .setLabel('Aktiflik Onayla')
-                        .setStyle(ButtonStyle.Success)
-                        .setEmoji('✅')
-                );
+            const embed = new EmbedBuilder()
+                .setColor('#0ea5e9')
+                .setTitle('🏆 Letra XII - Ekip Aktiflik Sıralaması')
+                .setTimestamp();
 
-                await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
+            if (leaderboard.length === 0) {
+                embed.setDescription('Henüz kaydedilmiş bir aktiflik verisi bulunmuyor.');
+            } else {
+                let description = '';
+                leaderboard.forEach((item, index) => {
+                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
+                    description += `${medal} <@${item.userId}> — **${item.score}** Puan\n`;
+                });
+                embed.setDescription(description);
             }
-        } 
-        else if (interaction.isButton()) {
-            if (interaction.customId === 'aktiflik_onayla_btn') {
-                try {
-                    db.set(`onay_${interaction.user.id}`, true);
-                } catch(e){}
 
-                const successEmbed = new EmbedBuilder()
-                    .setColor('#22c55e')
-                    .setTitle('🎉 Aktiflik Başarıyla Onaylandı!')
-                    .setDescription('Aktiflik durumunuz sistem tarafından kaydedildi.')
-                    .setTimestamp();
-
-                await interaction.update({ embeds: [successEmbed], components: [] }).catch(() => {});
-            }
+            await interaction.editReply({ embeds: [embed] }).catch(() => {});
         }
     } catch (err) {
         console.error("Interaction genel hata:", err);
