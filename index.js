@@ -31,6 +31,30 @@ function writeDB(data) {
     }
 }
 
+// Zaman kontrolü ve otomatik sıfırlama fonksiyonu
+function updateResetFields(userData) {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const monthStr = todayStr.slice(0, 7); // YYYY-MM
+    
+    // Hafta hesaplama
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    const weekStr = `${now.getFullYear()}-W${Math.ceil((((now - startOfYear) / 86400000) + startOfYear.getDay() + 1) / 7)}`;
+
+    if (!userData.lastDaily || userData.lastDaily !== todayStr) {
+        userData.daily = 0;
+        userData.lastDaily = todayStr;
+    }
+    if (!userData.lastWeekly || userData.lastWeekly !== weekStr) {
+        userData.weekly = 0;
+        userData.lastWeekly = weekStr;
+    }
+    if (!userData.lastMonthly || userData.lastMonthly !== monthStr) {
+        userData.monthly = 0;
+        userData.lastMonthly = monthStr;
+    }
+}
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -74,12 +98,24 @@ function addPointToUser(member) {
         username: member.user.username,
         displayName: member.displayName || member.user.globalName || member.user.username,
         avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }),
-        total: 0
+        daily: 0,
+        weekly: 0,
+        monthly: 0,
+        total: 0,
+        lastDaily: '',
+        lastWeekly: '',
+        lastMonthly: ''
     };
+
+    updateResetFields(userData);
 
     userData.username = member.user.username;
     userData.displayName = member.displayName || member.user.globalName || member.user.username;
     userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 }) || 'https://cdn.discordapp.com/embed/avatars/0.png';
+    
+    userData.daily = (userData.daily || 0) + 1;
+    userData.weekly = (userData.weekly || 0) + 1;
+    userData.monthly = (userData.monthly || 0) + 1;
     userData.total = (userData.total || 0) + 1;
 
     db[key] = userData;
@@ -88,7 +124,7 @@ function addPointToUser(member) {
     console.log(`[LETRA PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
 }
 
-// Web Paneli Rotası
+// Web Paneli Rotası (Günlük, Haftalık, Aylık, Total destekli)
 app.get('/', async (req, res) => {
     try {
         let db = readDB();
@@ -96,19 +132,18 @@ app.get('/', async (req, res) => {
             .filter(key => key.startsWith('stats_'))
             .map(key => {
                 const uData = db[key] || {};
-                const totalPoints = uData.total || 0;
-                const formattedPoint = formatPoint(totalPoints);
+                updateResetFields(uData);
 
                 return {
                     userId: uData.id || key.replace('stats_', ''),
                     username: uData.username || 'Oyuncu',
                     displayName: uData.displayName || uData.username || 'Oyuncu',
                     avatar: uData.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png',
-                    dailyStr: formattedPoint,
-                    weeklyStr: formattedPoint,
-                    monthlyStr: formattedPoint,
-                    totalStr: formattedPoint,
-                    rawTotal: totalPoints
+                    dailyStr: formatPoint(uData.daily),
+                    weeklyStr: formatPoint(uData.weekly),
+                    monthlyStr: formatPoint(uData.monthly),
+                    totalStr: formatPoint(uData.total),
+                    rawTotal: uData.total || 0
                 };
             })
             .sort((a, b) => b.rawTotal - a.rawTotal);
@@ -136,7 +171,7 @@ client.once('ready', async () => {
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
-                .setDescription('Sunucudaki Letra aktifliği ve puan liderlik tablosunu görüntülersiniz.')
+                .setDescription('Sunucudaki Letra aktiflik ve süre liderlik tablosunu görüntülersiniz.')
                 .toJSON()
         ];
 
@@ -173,7 +208,7 @@ client.once('ready', async () => {
     }, 10000);
 });
 
-// Slash Komutu (/aktiflikbot -> Liderlik Tablosu)
+// Slash Komutu (/aktiflikbot -> Günlük, Haftalık, Aylık ve Total İstatistikler)
 client.on('interactionCreate', async interaction => {
     try {
         if (!interaction.isChatInputCommand()) return;
@@ -186,9 +221,13 @@ client.on('interactionCreate', async interaction => {
                 .filter(key => key.startsWith('stats_'))
                 .map(key => {
                     const uData = db[key] || {};
+                    updateResetFields(uData);
                     return {
                         userId: uData.id || key.replace('stats_', ''),
                         displayName: uData.displayName || uData.username || 'Oyuncu',
+                        daily: uData.daily || 0,
+                        weekly: uData.weekly || 0,
+                        monthly: uData.monthly || 0,
                         total: uData.total || 0
                     };
                 })
@@ -197,8 +236,8 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('🏆 Letra - Puan Sıralaması')
-                .setDescription('Sunucudaki en yüksek puanlı Letra oyuncuları:')
+                .setTitle('🏆 Letra - Detaylı Aktiflik Sıralaması')
+                .setDescription('Sunucudaki oyuncuların Günlük, Haftalık, Aylık ve Toplam istatistikleri:')
                 .setTimestamp();
 
             if (leaderboard.length === 0) {
@@ -207,15 +246,15 @@ client.on('interactionCreate', async interaction => {
                 let finalDesc = '';
                 leaderboard.forEach((item, index) => {
                     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                    finalDesc += `${medal} <@${item.userId}> — **${formatPoint(item.total)}**\n`;
+                    finalDesc += `${medal} <@${item.userId}>\n> Günlük: \`${item.daily}\` | Haftalık: \`${item.weekly}\` | Aylık: \`${item.monthly}\` | **Toplam: \`${item.total} Puan\`**\n\n`;
                 });
-                embed.addFields({ name: 'Sıralama', value: finalDesc });
+                embed.addFields({ name: '📊 Oyuncu İstatistikleri', value: finalDesc });
             }
 
             await interaction.editReply({ embeds: [embed] }).catch(() => {});
         }
     } catch (err) {
-        console.error("Interaction hata:", err);
+        console.log("Interaction hata:", err);
     }
 });
 
