@@ -169,8 +169,13 @@ client.once('ready', async () => {
                 .toJSON()
         ];
 
+        // 1. Önce eski kalıntıları engellemek için Global komutları tamamen boşaltıyoruz:
+        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
+
+        // 2. Sunucudaki komutları sıfırlayıp sadece yeni komutları yüklüyoruz:
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('[BAŞARILI] Sadece /aktiflik ve /topaktiflik komutları yüklendi!');
+        
+        console.log('[BAŞARILI] Komutlar sıfırlandı ve sadece /aktiflik ile /topaktiflik yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
@@ -205,7 +210,6 @@ client.on('interactionCreate', async interaction => {
     try {
         if (!interaction.isChatInputCommand()) return;
 
-        // 1. /aktiflik Komutu (Kişinin kendi puanı - Sadece kendisine görünür)
         if (interaction.commandName === 'aktiflik') {
             await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
@@ -234,7 +238,6 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply({ embeds: [embed] }).catch(() => {});
         }
 
-        // 2. /topaktiflik Komutu (İlk 10 listesi)
         if (interaction.commandName === 'topaktiflik') {
             await interaction.deferReply().catch(() => {});
 
