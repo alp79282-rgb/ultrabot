@@ -93,7 +93,12 @@ client.once('ready', async () => {
 
         new SlashCommandBuilder()
             .setName('aktiflikkontrol')
-            .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.')
+            .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.'),
+
+        new SlashCommandBuilder()
+            .setName('ticket-kur')
+            .setDescription('Destek (Ticket) panelini bu kanala kurar.')
+            .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     ].map(command => command.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -129,6 +134,7 @@ client.on('interactionCreate', async interaction => {
         const { commandName } = interaction;
 
         if (commandName === 'aktiflik') {
+            await interaction.deferReply({ ephemeral: true });
             let rawData = db.all();
             let allData = Array.isArray(rawData) ? rawData : [];
 
@@ -148,20 +154,21 @@ client.on('interactionCreate', async interaction => {
                 .setFooter({ text: 'Letra XII Aktiflik Takip Sistemi' })
                 .setTimestamp();
 
-            await interaction.reply({ embeds: [embed], ephemeral: true });
+            await interaction.editReply({ embeds: [embed] });
         }
 
         if (commandName === 'aktiflik-sifirla') {
+            await interaction.deferReply({ ephemeral: true });
             const targetUser = interaction.options.getUser('kullanici');
             db.delete(`aktiflik_${targetUser.id}`);
 
-            await interaction.reply({
-                content: `✅ <@${targetUser.id}> adlı kullanıcının aktiflik süresi başarıyla sıfırlandı.`,
-                ephemeral: true
+            await interaction.editReply({
+                content: `✅ <@${targetUser.id}> adlı kullanıcının aktiflik süresi başarıyla sıfırlandı.`
             });
         }
 
         if (commandName === 'aktiflikkontrol') {
+            await interaction.deferReply({ ephemeral: true });
             const userId = interaction.user.id;
             const userScore = db.fetch(`aktiflik_${userId}`) || 0;
 
@@ -180,14 +187,35 @@ client.on('interactionCreate', async interaction => {
                     .setEmoji('✅')
             );
 
-            await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+            await interaction.editReply({ embeds: [embed], components: [row] });
+        }
+
+        if (commandName === 'ticket-kur') {
+            await interaction.deferReply({ ephemeral: true });
+
+            const embed = new EmbedBuilder()
+                .setColor('#6366f1')
+                .setTitle('🎫 Letra XII - Destek Sistemi')
+                .setDescription('Sunucumuzda herhangi bir konuda destek almak, soru sormak veya bildirimde bulunmak için aşağıdaki **Destek Talebi Oluştur** butonuna tıklayabilirsiniz.')
+                .setFooter({ text: 'Letra XII Destek Ekibi' })
+                .setTimestamp();
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('create_ticket_btn')
+                    .setLabel('Destek Talebi Oluştur')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji('🎫')
+            );
+
+            // Komutun kullanıldığı kanala ticket panelini gönderir
+            await interaction.channel.send({ embeds: [embed], components: [row] });
+            await interaction.editReply({ content: '✅ Destek paneli bu kanala başarıyla kuruldu!' });
         }
     } 
     else if (interaction.isButton()) {
         if (interaction.customId === 'aktiflik_onayla_btn') {
             const userId = interaction.user.id;
-            
-            // Onaylandığına dair veritabanında işlem yapabilir veya log tutabiliriz
             db.set(`onay_${userId}`, true);
 
             const successEmbed = new EmbedBuilder()
@@ -196,7 +224,61 @@ client.on('interactionCreate', async interaction => {
                 .setDescription('Aktiflik durumunuz sistem tarafından doğrulandı ve kaydedildi. İyi oyunlar dileriz!')
                 .setTimestamp();
 
-            await interaction.update({ embeds: [successEmbed], components: [], ephemeral: true });
+            await interaction.update({ embeds: [successEmbed], components: [] });
+        }
+
+        if (interaction.customId === 'create_ticket_btn') {
+            const guild = interaction.guild;
+            const member = interaction.member;
+
+            await interaction.reply({ content: '⏳ Destek kanalı oluşturuluyor, lütfen bekleyin...', ephemeral: true });
+
+            try {
+                // Her kullanıcıya özel ticket kanalı açma
+                const ticketChannel = await guild.channels.create({
+                    name: `ticket-${member.user.username}`,
+                    type: 0, // GuildText
+                    permissionOverwrites: [
+                        {
+                            id: guild.id, // @everyone göremez
+                            deny: ['ViewChannel'],
+                        },
+                        {
+                            id: member.id, // Ticket açan kullanıcı görebilir ve yazabilir
+                            allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
+                        },
+                    ],
+                });
+
+                const ticketEmbed = new EmbedBuilder()
+                    .setColor('#10b981')
+                    .setTitle(`🎫 Destek Talebi - ${member.user.tag}`)
+                    .setDescription('Yetkililer kısa süre içinde sizinle ilgilenecektir. Talebi kapatmak için aşağıdaki butona basabilirsiniz.')
+                    .setTimestamp();
+
+                const closeRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('close_ticket_btn')
+                        .setLabel('Talebi Kapat')
+                        .setStyle(ButtonStyle.Danger)
+                        .setEmoji('🔒')
+                );
+
+                await ticketChannel.send({ content: `<@${member.id}>`, embeds: [ticketEmbed], components: [closeRow] });
+                await interaction.editReply({ content: `✅ Destek kanalınız başarıyla oluşturuldu: <#${ticketChannel.id}>` });
+            } catch (err) {
+                console.error("Ticket oluşturma hatası:", err);
+                await interaction.editReply({ content: '❌ Destek kanalı oluşturulurken bir hata oluştu!' });
+            }
+        }
+
+        if (interaction.customId === 'close_ticket_btn') {
+            await interaction.reply({ content: '🔒 Destek talebi 5 saniye içinde kapatılıyor...', ephemeral: true });
+            setTimeout(async () => {
+                try {
+                    await interaction.channel.delete();
+                } catch (e) {}
+            }, 5000);
         }
     }
 });
