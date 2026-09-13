@@ -30,35 +30,57 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Web Paneli
+// Web Paneli (Tüm croxydb formatlarını destekleyecek şekilde güncellendi)
 app.get('/', async (req, res) => {
     try {
         let rawData = db.all();
-        let allData = Array.isArray(rawData) ? rawData : [];
-        
-        const activeRecords = allData
-            .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
-            .map(item => {
-                const userId = item.ID.replace('aktiflik_', '');
-                const puan = item.data || 0;
-                
-                const toplamSaniye = puan * 10;
-                const saat = Math.floor(toplamSaniye / 3600);
-                const dakika = Math.floor((toplamSaniye % 3600) / 60);
+        let activeRecords = [];
 
-                let sureStr = '';
-                if (saat > 0) sureStr += `${saat} Saat `;
-                sureStr += `${dakika} Dakika`;
+        // Verinin formatı ne olursa olsun (Array veya Object) güvenle okur
+        if (Array.isArray(rawData)) {
+            activeRecords = rawData
+                .filter(item => item && (item.ID || item.key) && String(item.ID || item.key).startsWith('aktiflik_'))
+                .map(item => {
+                    const key = item.ID || item.key;
+                    const userId = key.replace('aktiflik_', '');
+                    const puan = item.data || item.value || 0;
+                    
+                    const toplamSaniye = puan * 10;
+                    const saat = Math.floor(toplamSaniye / 3600);
+                    const dakika = Math.floor((toplamSaniye % 3600) / 60);
 
-                return { userId, time: sureStr, rawScore: puan };
-            });
-        
+                    let sureStr = '';
+                    if (saat > 0) sureStr += `${saat} Saat `;
+                    sureStr += `${dakika} Dakika`;
+
+                    return { userId, time: sureStr, rawScore: puan };
+                });
+        } else if (rawData && typeof rawData === 'object') {
+            activeRecords = Object.entries(rawData)
+                .filter(([key]) => key.startsWith('aktiflik_'))
+                .map(([key, value]) => {
+                    const userId = key.replace('aktiflik_', '');
+                    const puan = typeof value === 'object' ? (value.data || value.value || 0) : (value || 0);
+                    
+                    const toplamSaniye = puan * 10;
+                    const saat = Math.floor(toplamSaniye / 3600);
+                    const dakika = Math.floor((toplamSaniye % 3600) / 60);
+
+                    let sureStr = '';
+                    if (saat > 0) sureStr += `${saat} Saat `;
+                    sureStr += `${dakika} Dakika`;
+
+                    return { userId, time: sureStr, rawScore: puan };
+                });
+        }
+
         res.render('index', { 
             bot: client.user ? { username: client.user.username } : null, 
             records: activeRecords, 
             stats: { guilds: client.guilds.cache.size, users: 0, activeCount: activeRecords.length } 
         });
     } catch (e) {
+        console.error("Web panel hata:", e);
         res.render('index', { bot: null, records: [], stats: { guilds: 0, users: 0, activeCount: 0 } });
     }
 });
@@ -85,16 +107,12 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // ARKA PLAN TARAMASI (Her 10 saniyede bir doğrudan API ile üyeleri ve oyunları çeker)
+    // ARKA PLAN TARAMASI (Her 10 saniyede bir)
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
-            if (!guild) {
-                console.log("[HATA] Hedef sunucu (Guild) bulunamadı! ID'yi kontrol edin.");
-                return;
-            }
+            if (!guild) return;
 
-            // Üyeleri ve presenceları doğrudan Discord sunucusundan zorla tazele
             const members = await guild.members.fetch({ withPresences: true }).catch(() => null);
             if (!members) return;
 
@@ -104,7 +122,6 @@ client.once('ready', async () => {
                 member.presence.activities.forEach(act => {
                     if (act && act.name) {
                         const name = act.name.toLowerCase();
-                        // Counter-Strike, CS veya Letra kelimelerini esnek bir şekilde yakalar
                         if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
                             let currentCount = 0;
                             try { currentCount = db.get(`aktiflik_${member.id}`) || 0; } catch(e){}
@@ -129,7 +146,12 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply().catch(() => {});
 
             let rawData = db.all();
-            let allData = Array.isArray(rawData) ? rawData : [];
+            let allData = [];
+            if (Array.isArray(rawData)) {
+                allData = rawData.map(item => ({ ID: item.ID || item.key, data: item.data || item.value }));
+            } else if (rawData && typeof rawData === 'object') {
+                allData = Object.entries(rawData).map(([ID, val]) => ({ ID, data: typeof val === 'object' ? (val.data || val.value) : val }));
+            }
             
             const leaderboard = allData
                 .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
