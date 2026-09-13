@@ -3,12 +3,7 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuild
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
-const Database = require('croxydb');
-
-// Veritabanını ortak ve sabit bir dosyaya sabitliyoruz (Verilerin kaybolmasını ve senkron sorununu önler)
-const db = new Database({
-    databasePath: path.join(__dirname, 'database.json')
-});
+const db = require('croxydb'); // Dosya yolu vermeden saf tanımlama
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -39,7 +34,7 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Doğrudan Puan Formatı (10 saniyede 1 puan)
+// Puan Formatı (Örn: 15 Puan)
 function formatPoint(puan) {
     return `${puan || 0} Puan`;
 }
@@ -63,7 +58,7 @@ function addPointToUser(member) {
     userData.total = (userData.total || 0) + 1;
 
     db.set(key, userData);
-    console.log(`[VERİTABANINA YAZILDI] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+    console.log(`[COUNTER PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
 }
 
 // Web Paneli Rotası
