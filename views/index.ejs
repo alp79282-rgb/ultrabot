@@ -3,58 +3,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= bot ? bot.username : 'Letra XII' %> - Yönetim Paneli</title>
+    <title>Letra XII - Aktiflik Paneli</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col justify-between font-sans">
-    
-    <!-- Navbar -->
-    <nav class="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur p-4">
-        <div class="max-w-6xl mx-auto flex justify-between items-center">
+<body class="min-h-screen flex flex-col items-center justify-between p-6">
+    <div class="w-full max-w-4xl mx-auto">
+        <!-- Üst Bilgi / Claude Tarzı Header -->
+        <header class="flex items-center justify-between border-b border-slate-800 pb-6 mb-8">
             <div class="flex items-center space-x-3">
-                <div class="bg-indigo-600 p-2 rounded-lg text-white font-bold"><i class="fa-solid fa-shield-halved"></i></div>
-                <span class="text-xl font-bold tracking-wide">Letra XII <span class="text-indigo-500">Panel</span></span>
+                <div class="h-3 w-3 bg-emerald-500 rounded-full animate-pulse"></div>
+                <h1 class="text-xl font-semibold tracking-tight text-slate-100">Letra XII <span class="text-slate-500 font-normal">/ Aktiflik Sistemi</span></h1>
             </div>
-            <div class="text-sm bg-zinc-800 px-3 py-1.5 rounded-full border border-zinc-700">
-                Bot: <span class="text-emerald-400 font-semibold"><%= bot ? bot.tag : 'Bağlanıyor...' %></span>
+            <div class="text-xs px-3 py-1.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                Canlı Takip Aktif
+            </div>
+        </header>
+
+        <!-- İstatistik Kutuları -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+            <div class="glass-card p-5 rounded-2xl shadow-lg">
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Aktif Ekip Üyesi</p>
+                <p class="text-3xl font-bold text-slate-100 mt-2"><%= stats.activeCount %></p>
+            </div>
+            <div class="glass-card p-5 rounded-2xl shadow-lg">
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Sunucu Durumu</p>
+                <p class="text-3xl font-bold text-emerald-400 mt-2">Çevrimiçi</p>
             </div>
         </div>
-    </nav>
 
-    <!-- Main Content -->
-    <main class="max-w-6xl mx-auto p-6 w-full flex-grow">
-        <div class="mb-8">
-            <h1 class="text-3xl font-extrabold tracking-tight">Aktiflik Takip Paneli</h1>
-            <p class="text-zinc-400 text-sm mt-1">Ekip üyelerinin oyun içi ve Discord aktiflik istatistikleri.</p>
-        </div>
-
-        <div class="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden shadow-xl">
-            <div class="p-4 border-b border-zinc-800 font-semibold text-zinc-300">
-                <i class="fa-solid fa-users mr-2 text-indigo-500"></i> Kayıtlı Üye Aktivite Skorları
+        <!-- Sıralama Listesi -->
+        <div class="glass-card rounded-2xl overflow-hidden shadow-xl">
+            <div class="px-6 py-4 border-b border-slate-800 bg-slate-900/40">
+                <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wider">Ekip Liderlik Tablosu</h2>
             </div>
-            <div class="divide-y divide-zinc-800">
-                <% if (records && records.length > 0) { %>
-                    <% records.forEach(rec => { %>
-                        <div class="p-4 flex justify-between items-center hover:bg-zinc-800/50 transition">
-                            <span class="font-mono text-sm text-zinc-400">ID: <%= rec.userId %></span>
-                            <span class="bg-indigo-500/10 text-indigo-400 px-3 py-1 rounded-full text-xs font-medium border border-indigo-500/20">
-                                Skor / Süre: <%= rec.time %>
-                            </span>
+            <div class="divide-y divide-slate-800/60">
+                <% if (records.length === 0) { %>
+                    <div class="p-8 text-center text-slate-500 text-sm">Henüz kayıtlı aktiflik verisi bulunmuyor.</div>
+                <% } else { %>
+                    <% records.sort((a,b) => b.time - a.time).forEach((rec, index) => { %>
+                        <div class="px-6 py-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
+                            <div class="flex items-center space-x-4">
+                                <span class="text-sm font-bold text-slate-500 w-6">#<%= index + 1 %></span>
+                                <span class="text-sm font-medium text-slate-200">Kullanıcı ID: <%= rec.userId %></span>
+                            </div>
+                            <div class="text-sm font-semibold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                                <%= rec.time %> Puan
+                            </div>
                         </div>
                     <% }) %>
-                <% } else { %>
-                    <div class="p-8 text-center text-zinc-500">
-                        Henüz aktiflik verisi kaydedilmedi veya üyeler oyuna girmedi.
-                    </div>
-                <% } %>
+                <% %>
             </div>
         </div>
-    </main>
+    </div>
 
-    <!-- Footer -->
-    <footer class="border-t border-zinc-800 text-center py-4 text-xs text-zinc-500">
-        Letra XII © 2026 - Tüm Hakları Saklıdır.
+    <footer class="mt-12 text-center text-xs text-slate-600">
+        Letra XII Ekip Yönetim Sistemi &bull; Güvenli Altyapı
     </footer>
 </body>
 </html>
