@@ -7,17 +7,18 @@ const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-
 const DB_FILE = path.join(__dirname, 'database.json');
 
+// Güvenli ve kilitlenmesiz dosya okuma/yazma mekanizması
 function readDB() {
     try {
         if (!fs.existsSync(DB_FILE)) {
-            fs.writeFileSync(DB_FILE, JSON.stringify({}));
+            fs.writeFileSync(DB_FILE, JSON.stringify({}, null, 2), 'utf8');
         }
         const data = fs.readFileSync(DB_FILE, 'utf8');
-        return JSON.parse(data);
+        return JSON.parse(data || '{}');
     } catch (e) {
+        console.error("Veritabanı okuma hatası:", e);
         return {};
     }
 }
@@ -30,25 +31,40 @@ function writeDB(data) {
     }
 }
 
-function updateResetFields(userData) {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const monthStr = todayStr.slice(0, 7);
-    
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-    const weekStr = `${now.getFullYear()}-W${Math.ceil((((now - startOfYear) / 86400000) + startOfYear.getDay() + 1) / 7)}`;
+// Kesin ve hatasız tarih string üreticileri (Günlük, Haftalık, Aylık)
+function getDayKey(date = new Date()) {
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD
+}
 
-    if (!userData.lastDaily || userData.lastDaily !== todayStr) {
+function getMonthKey(date = new Date()) {
+    return date.toISOString().slice(0, 7); // YYYY-MM
+}
+
+function getWeekKey(date = new Date()) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return `${d.getUTCFullYear()}-W${weekNo}`;
+}
+
+function updateResetFields(userData) {
+    const currentDay = getDayKey();
+    const currentWeek = getWeekKey();
+    const currentMonth = getMonthKey();
+
+    if (userData.lastDaily !== currentDay) {
         userData.daily = 0;
-        userData.lastDaily = todayStr;
+        userData.lastDaily = currentDay;
     }
-    if (!userData.lastWeekly || userData.lastWeekly !== weekStr) {
+    if (userData.lastWeekly !== currentWeek) {
         userData.weekly = 0;
-        userData.lastWeekly = weekStr;
+        userData.lastWeekly = currentWeek;
     }
-    if (!userData.lastMonthly || userData.lastMonthly !== monthStr) {
+    if (userData.lastMonthly !== currentMonth) {
         userData.monthly = 0;
-        userData.lastMonthly = monthStr;
+        userData.lastMonthly = currentMonth;
     }
 }
 
@@ -82,39 +98,47 @@ function formatPoint(puan) {
     return `${puan || 0} Puan`;
 }
 
-function addPointToUser(member) {
-    if (!member || !member.user) return;
+// Toplu ve güvenli puan ekleme fonksiyonu (Dosya yarışını engeller)
+function addPointsBatch(memberIdsMap) {
+    if (memberIdsMap.size === 0) return;
 
     let db = readDB();
-    const key = `stats_${member.id}`;
-    
-    let userData = db[key] || {
-        id: member.id,
-        username: member.user.username,
-        displayName: member.displayName || member.user.globalName || member.user.username,
-        avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }),
-        daily: 0,
-        weekly: 0,
-        monthly: 0,
-        total: 0,
-        lastDaily: '',
-        lastWeekly: '',
-        lastMonthly: ''
-    };
+    let updated = false;
 
-    updateResetFields(userData);
+    for (const [userId, member] of memberIdsMap.entries()) {
+        const key = `stats_${userId}`;
+        let userData = db[key] || {
+            id: userId,
+            username: member.user.username,
+            displayName: member.displayName || member.user.globalName || member.user.username,
+            avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }) || 'https://cdn.discordapp.com/embed/avatars/0.png',
+            daily: 0,
+            weekly: 0,
+            monthly: 0,
+            total: 0,
+            lastDaily: getDayKey(),
+            lastWeekly: getWeekKey(),
+            lastMonthly: getMonthKey()
+        };
 
-    userData.username = member.user.username;
-    userData.displayName = member.displayName || member.user.globalName || member.user.username;
-    userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 }) || 'https://cdn.discordapp.com/embed/avatars/0.png';
-    
-    userData.daily = (userData.daily || 0) + 1;
-    userData.weekly = (userData.weekly || 0) + 1;
-    userData.monthly = (userData.monthly || 0) + 1;
-    userData.total = (userData.total || 0) + 1;
+        updateResetFields(userData);
 
-    db[key] = userData;
-    writeDB(db);
+        userData.username = member.user.username;
+        userData.displayName = member.displayName || member.user.globalName || member.user.username;
+        userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 }) || 'https://cdn.discordapp.com/embed/avatars/0.png';
+
+        userData.daily += 1;
+        userData.weekly += 1;
+        userData.monthly += 1;
+        userData.total += 1;
+
+        db[key] = userData;
+        updated = true;
+    }
+
+    if (updated) {
+        writeDB(db);
+    }
 }
 
 app.get('/', async (req, res) => {
@@ -169,11 +193,12 @@ client.once('ready', async () => {
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
         
-        console.log('[BAŞARILI] /aktiflikbot komutu gelişmiş menüyle yüklendi!');
+        console.log('[BAŞARILI] /aktiflikbot komutu güvenli sürümle yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
 
+    // Her 10 saniyede bir tarama döngüsü
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -181,19 +206,27 @@ client.once('ready', async () => {
 
             await guild.members.fetch({ withPresences: true }).catch(() => {});
 
+            const activePlayingMembers = new Map();
+
             guild.members.cache.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
                 const isPlayingLetra = member.presence.activities.some(act => {
-                    if (!act || act.type !== 0) return false;
-                    const gameName = act.name.toLowerCase();
-                    return gameName.includes('letra');
+                    if (!act || (act.type !== 0 && act.type !== 4)) return false; // 0: Playing, 4: Custom/Status (gerekirse esneklik)
+                    const gameName = (act.name || '').toLowerCase();
+                    const details = (act.details || '').toLowerCase();
+                    const state = (act.state || '').toLowerCase();
+                    return gameName.includes('letra') || details.includes('letra') || state.includes('letra');
                 });
                 
                 if (isPlayingLetra) {
-                    addPointToUser(member);
+                    activePlayingMembers.set(member.id, member);
                 }
             });
+
+            if (activePlayingMembers.size > 0) {
+                addPointsBatch(activePlayingMembers);
+            }
         } catch (err) {
             console.error("Periyodik tarama hatası:", err);
         }
@@ -202,7 +235,6 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     try {
-        // 1. SLASH KOMUT (Ana Menü)
         if (interaction.isChatInputCommand()) {
             if (interaction.commandName === 'aktiflikbot') {
                 await interaction.deferReply().catch(() => {});
@@ -230,15 +262,13 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // 2. BUTON ETKİLEŞİMLERİ
         if (interaction.isButton()) {
-            // KİŞİSEL PUAN GÖSTER (Günlük, Haftalık, Aylık, Toplam)
             if (interaction.customId === 'btn_puan') {
                 await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
                 let db = readDB();
                 const key = `stats_${interaction.user.id}`;
-                const uData = db[key];
+                let uData = db[key];
 
                 const embed = new EmbedBuilder()
                     .setColor('#0ea5e9')
@@ -261,7 +291,6 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ embeds: [embed] }).catch(() => {});
             }
 
-            // SIRALAMAYI GÖR BUTONUNA BASILINCA ALT SEÇENEKLERİ ÇIKAR
             if (interaction.customId === 'btn_siralama_menu') {
                 await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
@@ -281,12 +310,11 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
             }
 
-            // SEÇİLEN KATEGORİYE GÖRE TOP 10 LİDERLİK TABLOSUNU GÖSTER
             if (['lb_daily', 'lb_weekly', 'lb_monthly', 'lb_total'].includes(interaction.customId)) {
                 await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
                 let db = readDB();
-                const type = interaction.customId.replace('lb_', ''); // daily, weekly, monthly, total
+                const type = interaction.customId.replace('lb_', '');
 
                 let titleText = '';
                 let colorHex = '#10b981';
@@ -316,7 +344,7 @@ client.on('interactionCreate', async interaction => {
                         };
                     })
                     .sort((a, b) => b.score - a.score)
-                    .slice(0, 10); // İlk 10 kişi
+                    .slice(0, 10);
 
                 const embed = new EmbedBuilder()
                     .setColor(colorHex)
@@ -349,5 +377,5 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Web panel ${PORT} portunda.`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Web panel ${PORT} portunda çalışıyor.`));
 client.login(process.env.TOKEN);
