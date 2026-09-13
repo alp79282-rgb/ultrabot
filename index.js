@@ -3,7 +3,12 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuild
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
-const db = require('croxydb');
+const Database = require('croxydb');
+
+// Veritabanını ortak ve sabit bir dosyaya sabitliyoruz (Verilerin kaybolmasını ve senkron sorununu önler)
+const db = new Database({
+    databasePath: path.join(__dirname, 'database.json')
+});
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -43,7 +48,8 @@ function formatPoint(puan) {
 function addPointToUser(member) {
     if (!member || !member.user) return;
 
-    let userData = db.get(`stats_${member.id}`) || {
+    const key = `stats_${member.id}`;
+    let userData = db.get(key) || {
         id: member.id,
         username: member.user.username,
         displayName: member.displayName || member.user.globalName || member.user.username,
@@ -56,8 +62,8 @@ function addPointToUser(member) {
     userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 }) || 'https://cdn.discordapp.com/embed/avatars/0.png';
     userData.total = (userData.total || 0) + 1;
 
-    db.set(`stats_${member.id}`, userData);
-    console.log(`[COUNTER PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+    db.set(key, userData);
+    console.log(`[VERİTABANINA YAZILDI] ${userData.displayName} | Toplam Puan: ${userData.total}`);
 }
 
 // Web Paneli Rotası
