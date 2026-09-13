@@ -26,8 +26,8 @@ client.once('ready', async () => {
 
     const commands = [
         new SlashCommandBuilder()
-            .setName('aktiflik')
-            .setDescription('Letra XII oyun sürenizi ve yetkilendirme bağlantınızı görüntülersiniz.')
+            .setName('aktiflikbot')
+            .setDescription('Kişisel Letra XII oyun sürenizi ve FiveM durumunuzu görüntülersiniz.')
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -36,46 +36,76 @@ client.once('ready', async () => {
             Routes.applicationCommands(client.user.id),
             { body: commands },
         );
-        console.log('Slash komutları başarıyla yüklendi.');
+        console.log('Slash komutu (/aktiflikbot) başarıyla yüklendi.');
     } catch (error) {
         console.error(error);
     }
 });
 
-// --- 2. DİSCORD KOMUTU VE YETKİLENDİRME BUTONU ---
+// --- 2. DİSCORD ETKİLEŞİM VE BUTON YÖNETİMİ ---
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+    if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'aktiflikbot') {
+            const userId = interaction.user.id;
+            const guildId = interaction.guild.id;
 
-    if (interaction.commandName === 'aktiflik') {
-        const userId = interaction.user.id;
-        const guildId = interaction.guild.id;
+            const dailyLogs = db.fetch(`sessions_daily_${guildId}_${userId}`) || [];
+            const weeklyLogs = db.fetch(`sessions_weekly_${guildId}_${userId}`) || [];
+            
+            const totalDailyMin = dailyLogs.reduce((acc, l) => acc + l.duration, 0);
+            const totalWeeklyMin = weeklyLogs.reduce((acc, l) => acc + l.duration, 0);
 
-        const dailyLogs = db.fetch(`sessions_daily_${guildId}_${userId}`) || [];
-        const weeklyLogs = db.fetch(`sessions_weekly_${guildId}_${userId}`) || [];
-        
-        const totalDailyMin = dailyLogs.reduce((acc, l) => acc + l.duration, 0);
-        const totalWeeklyMin = weeklyLogs.reduce((acc, l) => acc + l.duration, 0);
+            // İstediğin gibi siteye yönlendirmeyen, doğrudan kontrol butonu
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('fivem_kontrol_btn')
+                        .setLabel('🎮 FiveM Durumunu Kontrol Et')
+                        .setStyle(ButtonStyle.Primary)
+                );
 
-        // Discord OAuth2 Bot / Uygulama Yetkilendirme Linki
-        // Butona basıldığında doğrudan Discord'un "Yetkilendir" ekranı açılır
-        const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${process.env.CLIENT_ID}&permissions=8&scope=bot%20applications.commands&redirect_uri=${encodeURIComponent(process.env.REDIRECT_URI)}&response_type=code`;
+            await interaction.reply({
+                content: `📊 **Letra XII Kişisel Aktiflik Karnen**:\n\n` +
+                         `⏱️ **Bugünkü Süre:** ${Math.floor(totalDailyMin / 60)} Saat ${totalDailyMin % 60} Dk\n` +
+                         `📅 **Haftalık Süre:** ${Math.floor(totalWeeklyMin / 60)} Saat ${totalWeeklyMin % 60} Dk\n\n` +
+                         `*Anlık durumunu ve FiveM bağlantını test etmek için aşağıdaki butona basabilirsin:*`,
+                components: [row],
+                ephemeral: true
+            });
+        }
+    } 
+    else if (interaction.isButton()) {
+        if (interaction.customId === 'fivem_kontrol_btn') {
+            const userId = interaction.user.id;
+            const guildId = interaction.guild.id;
+            
+            // Üyenin anlık Discord presences verisini kontrol et
+            const member = await interaction.guild.members.fetch(userId).catch(() => null);
+            const presence = member ? member.presence : null;
+            
+            let statusText = "❌ Discord aktiviteleriniz kapalı veya sunucuda görünmüyorsunuz.";
+            
+            if (presence && presence.activities.length > 0) {
+                const activity = presence.activities.find(act => 
+                    act.name.toLowerCase().includes('fivem') || 
+                    act.name.toLowerCase().includes('letra xii') ||
+                    (act.details && act.details.toLowerCase().includes('letra xii'))
+                );
 
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setLabel('🔒 Botu / Sistemi Yetkilendir')
-                    .setStyle(ButtonStyle.Link)
-                    .setUrl(authUrl)
-            );
+                if (activity) {
+                    statusText = `✅ **Harika!** FiveM / Letra XII üzerinde aktif olduğunuz tespit edildi.\n🔸 **Detay:** ${activity.details || activity.name}`;
+                } else {
+                    statusText = `⚠️ Discord'da aktifsiniz ancak oynadığınız oyun listemizde görünmüyor veya **Aktivite Durumunuz gizli** olabilir.\n*(Not: Etkinlik gizleyenler için Discord gizlilik ayarlarından "Oynadığın oyunu durum mesajı olarak göster" seçeneğinin açık olması gerekir.)*`;
+                }
+            } else {
+                statusText = `⚠️ Aktif bir oyun algılanamadı. Etkinliklerinizin (Rich Presence) gizli olmadığından emin olun.`;
+            }
 
-        await interaction.reply({
-            content: `📊 **Letra XII Aktiflik Durumun**:\n\n` +
-                     `⏱️ **Bugünkü Süre:** ${Math.floor(totalDailyMin / 60)} Saat ${totalDailyMin % 60} Dk\n` +
-                     `📅 **Haftalık Süre:** ${Math.floor(totalWeeklyMin / 60)} Saat ${totalWeeklyMin % 60} Dk\n\n` +
-                     `*Sistemi onaylamak / yetkilendirmek için aşağıdaki butonu kullanabilirsin:*`,
-            components: [row],
-            ephemeral: true
-        });
+            await interaction.reply({
+                content: statusText,
+                ephemeral: true
+            });
+        }
     }
 });
 
@@ -172,7 +202,7 @@ app.get('/', (req, res) => {
     res.render('index', { user: req.session.user });
 });
 
-// Yönetici Web Paneli
+// Sadece Yöneticiler İçin Kontrol Paneli
 app.get('/dashboard', (req, res) => {
     if (!req.session.user) return res.redirect('/');
 
@@ -186,7 +216,7 @@ app.get('/dashboard', (req, res) => {
             ) : null;
 
             const isOnline = liveActivity ? true : false;
-            const rpcDetails = db.fetch(`rpc_info_${g.id}_${m.id}`) || (liveActivity ? liveActivity.details : 'Sunucuda Değil');
+            const rpcDetails = db.fetch(`rpc_info_${g.id}_${m.id}`) || (liveActivity ? liveActivity.details : 'Etkinlik Gizli / Oyunda Değil');
 
             const rawLogs = db.fetch(`sessions_${filter}_${g.id}_${m.id}`) || [];
             const totalMinutes = rawLogs.reduce((acc, l) => acc + l.duration, 0);
@@ -209,7 +239,7 @@ app.get('/dashboard', (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000, () => {
-    console.log('Yönetici Web Paneli yayında.');
+    console.log('Letra XII Bot ve Yönetici Paneli aktif.');
 });
 
 client.login(process.env.TOKEN);
