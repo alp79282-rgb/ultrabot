@@ -8,7 +8,6 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Bulut uyumlu kararlı JSON Veritabanı Sistemi
 const DB_FILE = path.join(__dirname, 'database.json');
 
 function readDB() {
@@ -31,13 +30,11 @@ function writeDB(data) {
     }
 }
 
-// Zaman kontrolü ve otomatik sıfırlama fonksiyonu
 function updateResetFields(userData) {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
-    const monthStr = todayStr.slice(0, 7); // YYYY-MM
+    const todayStr = now.toISOString().split('T')[0];
+    const monthStr = todayStr.slice(0, 7);
     
-    // Hafta hesaplama
     const startOfYear = new Date(now.getFullYear(), 0, 1);
     const weekStr = `${now.getFullYear()}-W${Math.ceil((((now - startOfYear) / 86400000) + startOfYear.getDay() + 1) / 7)}`;
 
@@ -81,12 +78,10 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Puan Formatı
 function formatPoint(puan) {
     return `${puan || 0} Puan`;
 }
 
-// Puan Ekleme Fonksiyonu
 function addPointToUser(member) {
     if (!member || !member.user) return;
 
@@ -120,11 +115,8 @@ function addPointToUser(member) {
 
     db[key] = userData;
     writeDB(db);
-    
-    console.log(`[VENTRA - LETRA AKTİFLİK] ${userData.displayName} puan aldı | Toplam: ${userData.total}`);
 }
 
-// Web Paneli Rotası (Günlük, Haftalık, Aylık, Total destekli)
 app.get('/', async (req, res) => {
     try {
         let db = readDB();
@@ -154,7 +146,6 @@ app.get('/', async (req, res) => {
             stats: { guilds: client.guilds.cache.size, activeCount: activeRecords.length } 
         });
     } catch (e) {
-        console.error("Web panel hata:", e);
         res.render('index', { bot: null, records: [], stats: { guilds: 0, activeCount: 0 } });
     }
 });
@@ -170,18 +161,20 @@ client.once('ready', async () => {
     try {
         const commands = [
             new SlashCommandBuilder()
-                .setName('aktiflikbot')
-                .setDescription('Ventra ekibine ait Letra aktiflik ve süre liderlik tablosunu görüntülersiniz.')
+                .setName('aktiflik')
+                .setDescription('Letra sunucusundaki kendi aktiflik ve puan istatistiklerinizi görürsünüz.'),
+            new SlashCommandBuilder()
+                .setName('topaktiflik')
+                .setDescription('Ventra ekibine ait Letra aktiflik ilk 10 liderlik tablosunu görüntülersiniz.')
                 .toJSON()
         ];
 
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('[BAŞARILI] /aktiflikbot komutu yüklendi!');
+        console.log('[BAŞARILI] Sadece /aktiflik ve /topaktiflik komutları yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // HER 10 SANİYEDE BİR: İsmi içinde "letra" geçen aktiviteyi kontrol et (Örn: Letra XII)
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -193,7 +186,7 @@ client.once('ready', async () => {
                 if (!member.presence || !member.presence.activities) return;
 
                 const isPlayingLetra = member.presence.activities.some(act => {
-                    if (!act || act.type !== 0) return false; // Tür 0: Oynuyor
+                    if (!act || act.type !== 0) return false;
                     const gameName = act.name.toLowerCase();
                     return gameName.includes('letra');
                 });
@@ -208,12 +201,41 @@ client.once('ready', async () => {
     }, 10000);
 });
 
-// Slash Komutu (/aktiflikbot -> Günlük, Haftalık, Aylık ve Total İstatistikler)
 client.on('interactionCreate', async interaction => {
     try {
         if (!interaction.isChatInputCommand()) return;
 
-        if (interaction.commandName === 'aktiflikbot') {
+        // 1. /aktiflik Komutu (Kişinin kendi puanı - Sadece kendisine görünür)
+        if (interaction.commandName === 'aktiflik') {
+            await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+            let db = readDB();
+            const key = `stats_${interaction.user.id}`;
+            const uData = db[key];
+
+            const embed = new EmbedBuilder()
+                .setColor('#0ea5e9')
+                .setTitle('👤 Ventra - Aktiflik Profiliniz')
+                .setTimestamp();
+
+            if (!uData || uData.total === 0) {
+                embed.setDescription('Henüz kayıtlı bir Letra aktiflik puanın bulunmuyor. Letra oynayarak puan kazanmaya başlayabilirsin!');
+            } else {
+                updateResetFields(uData);
+                embed.setDescription(`Hey <@${interaction.user.id}>, Letra sunucusundaki güncel istatistiklerin:`)
+                    .addFields(
+                        { name: '📅 Günlük Puan', value: `\`${uData.daily} Puan\``, inline: true },
+                        { name: '📆 Haftalık Puan', value: `\`${uData.weekly} Puan\``, inline: true },
+                        { name: '🗓️ Aylık Puan', value: `\`${uData.monthly} Puan\``, inline: true },
+                        { name: '🏆 Toplam Puan', value: `\`${uData.total} Puan\``, inline: false }
+                    );
+            }
+
+            await interaction.editReply({ embeds: [embed] }).catch(() => {});
+        }
+
+        // 2. /topaktiflik Komutu (İlk 10 listesi)
+        if (interaction.commandName === 'topaktiflik') {
             await interaction.deferReply().catch(() => {});
 
             let db = readDB();
@@ -235,9 +257,9 @@ client.on('interactionCreate', async interaction => {
                 .slice(0, 10);
 
             const embed = new EmbedBuilder()
-                .setColor('#0ea5e9')
-                .setTitle('🏆 Ventra x Letra - Aktiflik Sıralaması')
-                .setDescription('Ventra ekibinin Letra sunucusu oyuncularının Günlük, Haftalık, Aylık ve Toplam istatistikleri:')
+                .setColor('#10b981')
+                .setTitle('🏆 Ventra x Letra - Top 10 Liderlik Tablosu')
+                .setDescription('Ventra ekibinin Letra sunucusundaki en aktif ilk 10 oyuncusu:')
                 .setTimestamp();
 
             if (leaderboard.length === 0) {
@@ -248,7 +270,7 @@ client.on('interactionCreate', async interaction => {
                     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
                     finalDesc += `${medal} <@${item.userId}>\n> Günlük: \`${item.daily}\` | Haftalık: \`${item.weekly}\` | Aylık: \`${item.monthly}\` | **Toplam: \`${item.total} Puan\`**\n\n`;
                 });
-                embed.addFields({ name: '📊 Oyuncu İstatistikleri', value: finalDesc });
+                embed.addFields({ name: '📊 Sıralama', value: finalDesc });
             }
 
             await interaction.editReply({ embeds: [embed] }).catch(() => {});
