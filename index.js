@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
@@ -8,18 +8,15 @@ const db = require('croxydb');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Discord Bot Kurulumu
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildMessages
-    ],
-    partials: [Partials.User, Partials.Channel, Partials.GuildMember]
+    ]
 });
 
-// Express & Session Ayarları
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.set('view engine', 'ejs');
@@ -31,82 +28,54 @@ app.use(session({
     saveUninitialized: false
 }));
 
-// --- WEB PANEL ROTALARI ---
 app.get('/', async (req, res) => {
-    let botUser = null;
-    let guildCount = 0;
-    let totalUsers = 0;
-
     try {
-        if (client.user) {
-            botUser = { username: client.user.username, tag: client.user.tag };
-        }
-        guildCount = client.guilds.cache.size;
-        totalUsers = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
-    } catch (e) {}
-
-    let rawData = db.all();
-    let allData = Array.isArray(rawData) ? rawData : [];
-
-    const activeRecords = allData
-        .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
-        .map(item => ({
-            userId: item.ID.replace('aktiflik_', ''),
-            time: item.data
-        }));
-
-    res.render('index', { 
-        bot: botUser, 
-        records: activeRecords,
-        stats: {
-            guilds: guildCount,
-            users: totalUsers,
-            activeCount: activeRecords.length
-        }
-    });
+        let rawData = db.all();
+        let allData = Array.isArray(rawData) ? rawData : [];
+        const activeRecords = allData
+            .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
+            .map(item => ({ userId: item.ID.replace('aktiflik_', ''), time: item.data }));
+        
+        res.render('index', { 
+            bot: client.user ? { username: client.user.username } : null, 
+            records: activeRecords, 
+            stats: { guilds: client.guilds.cache.size, users: 0, activeCount: activeRecords.length } 
+        });
+    } catch (e) {
+        res.render('index', { bot: null, records: [], stats: { guilds: 0, users: 0, activeCount: 0 } });
+    }
 });
 
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
-
-// --- DISCORD BOT EVENTLERİ & KOMUTLAR ---
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
 client.once('ready', async () => {
-    console.log(`[🚀 LETRA CORE] ${client.user.tag} aktif ve görevde!`);
+    console.log(`[🚀 BOT AKTİF] ${client.user.tag}`);
 
-    // Sadece istediğin aktiflikkontrol komutu
-    const commands = [
-        new SlashCommandBuilder()
-            .setName('aktiflikkontrol')
-            .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.')
-    ].map(command => command.toJSON());
-
-    const rest = new REST({version: '10'}).setToken(process.env.TOKEN);
-    const TARGET_GUILD_ID = '1530348723958321262';
+    const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
+    const GUILD_ID = '1530348723958321262';
+    const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
-        // Önce eski global komutları temizle (isteğe bağlı güvenlik önlemi)
-        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: [] });
+        console.log("Komutlar sunucuya yükleniyor...");
+        const commands = [
+            new SlashCommandBuilder()
+                .setName('aktiflikkontrol')
+                .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.')
+                .toJSON()
+        ];
 
-        // Komutu doğrudan senin verdiğin sunucuya özel anında kaydet
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, TARGET_GUILD_ID),
-            { body: commands },
-        );
-        console.log('[⚡] /aktiflikkontrol komutu belirtilen sunucuya anında yüklendi ve eski komutlar temizlendi!');
+        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+        console.log('[BAŞARILI] /aktiflikkontrol komutu sunucuya yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
 });
 
-// Oyuncu aktivite takibi (FiveM / Oyunlar)
+// FiveM / Oyun aktivite takibi
 client.on('presenceUpdate', (oldPresence, newPresence) => {
     if (!newPresence || !newPresence.member) return;
-    
     const userId = newPresence.member.id;
-    const activities = newPresence.activities;
-    const playingGame = activities.find(act => act.type === 0);
+    const playingGame = newPresence.activities.find(act => act.type === 0);
 
     if (playingGame) {
         let currentCount = db.fetch(`aktiflik_${userId}`) || 0;
@@ -114,56 +83,56 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
     }
 });
 
-// Slash Komut ve Buton Etkileşim Yönetimi
+// Slash Komut Yönetimi
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'aktiflikkontrol') {
+            // Zaman aşımını önlemek için hemen ephemeral yanıt bekletisi açıyoruz
             await interaction.deferReply({ ephemeral: true });
-            
-            const userId = interaction.user.id;
-            const userScore = db.fetch(`aktiflik_${userId}`) || 0;
 
-            const embed = new EmbedBuilder()
-                .setColor('#0ea5e9')
-                .setTitle('👤 FiveM / Aktiflik Durum Kontrolü')
-                .setDescription(`Merhaba <@${userId}>!\n\nŞu anki kayıtlı aktiflik süreniz/puanınız: **${userScore}**\n\nDurumunuzu onaylamak ve sisteme kaydetmek için aşağıdaki **Aktiflik Onayla** butonuna tıklayabilirsiniz.`)
-                .setFooter({ text: 'Letra XII Aktiflik Takip' })
-                .setTimestamp();
+            try {
+                const userId = interaction.user.id;
+                const userScore = db.fetch(`aktiflik_${userId}`) || 0;
 
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('aktiflik_onayla_btn')
-                    .setLabel('Aktiflik Onayla')
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('✅')
-            );
+                const embed = new EmbedBuilder()
+                    .setColor('#0ea5e9')
+                    .setTitle('👤 Aktiflik Durum Kontrolü')
+                    .setDescription(`Merhaba <@${userId}>!\n\nKayıtlı aktiflik süreniz/puanınız: **${userScore}**\n\nDurumunuzu onaylamak için aşağıdaki butona tıklayabilirsiniz.`)
+                    .setTimestamp();
 
-            await interaction.editReply({ embeds: [embed], components: [row] });
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('aktiflik_onayla_btn')
+                        .setLabel('Aktiflik Onayla')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('✅')
+                );
+
+                await interaction.editReply({ embeds: [embed], components: [row] });
+            } catch (err) {
+                console.error("Komut işleme hatası:", err);
+                await interaction.editReply({ content: '❌ Bilgiler yüklenirken bir hata oluştu.' });
+            }
         }
     } 
     else if (interaction.isButton()) {
         if (interaction.customId === 'aktiflik_onayla_btn') {
-            const userId = interaction.user.id;
-            db.set(`onay_${userId}`, true);
+            try {
+                db.set(`onay_${interaction.user.id}`, true);
 
-            const successEmbed = new EmbedBuilder()
-                .setColor('#22c55e')
-                .setTitle('🎉 Aktiflik Başarıyla Onaylandı!')
-                .setDescription('Aktiflik durumunuz sistem tarafından doğrulandı ve kaydedildi. İyi oyunlar dileriz!')
-                .setTimestamp();
+                const successEmbed = new EmbedBuilder()
+                    .setColor('#22c55e')
+                    .setTitle('🎉 Aktiflik Başarıyla Onaylandı!')
+                    .setDescription('Aktiflik durumunuz sistem tarafından kaydedildi.')
+                    .setTimestamp();
 
-            await interaction.update({ embeds: [successEmbed], components: [] });
+                await interaction.update({ embeds: [successEmbed], components: [] });
+            } catch (err) {
+                console.error("Buton hatası:", err);
+            }
         }
     }
 });
 
-// --- SUNUCUYU BAŞLAT ---
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[🌐 WEB] Panel ${PORT} portunda aktif.`);
-});
-
-if (!process.env.TOKEN) {
-    console.error("[HATA] DISCORD TOKEN BULUNAMADI!");
-} else {
-    client.login(process.env.TOKEN);
-}
+app.listen(PORT, '0.0.0.0', () => console.log(`Web panel ${PORT} portunda.`));
+client.login(process.env.TOKEN);
