@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, Options } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Options } = require('discord.js');
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
@@ -159,25 +159,20 @@ client.once('ready', async () => {
     const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
+        // Eski komut ismini koruyoruz ki hata vermesin, açıklamasına menü olduğunu belirtiyoruz
         const commands = [
             new SlashCommandBuilder()
-                .setName('aktiflik')
-                .setDescription('Letra sunucusundaki kendi aktiflik ve puan istatistiklerinizi görürsünüz.'),
-            new SlashCommandBuilder()
-                .setName('topaktiflik')
-                .setDescription('Ventra ekibine ait Letra aktiflik ilk 10 liderlik tablosunu görüntülersiniz.')
+                .setName('aktiflikbot')
+                .setDescription('Ventra Letra aktiflik paneli ve liderlik tablosuna erişirsiniz.')
                 .toJSON()
         ];
 
-        // 1. Önce eski global komut kalıntılarını tamamen havaya uçuruyoruz
         await rest.put(Routes.applicationCommands(CLIENT_ID), { body: [] });
-
-        // 2. Sunucuya ait eski/yeni ne varsa sıfırlayıp sadece yeni komutları basıyoruz
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
         
-        console.log('[KESİN TEMİZLİK & YÜKLEME] Eski kalıntılar silindi, yeni komutlar aktif!');
+        console.log('[BAŞARILI] /aktiflikbot komutu butonlu panel olarak yüklendi!');
     } catch (error) {
-        console.error("Komut sıfırlama/yükleme hatası:", error);
+        console.error("Komut yükleme hatası:", error);
     }
 
     setInterval(async () => {
@@ -208,75 +203,104 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     try {
-        if (!interaction.isChatInputCommand()) return;
+        // 1. SLASH KOMUT ÇALIŞTIĞINDA (Butonlu Ana Panel)
+        if (interaction.isChatInputCommand()) {
+            if (interaction.commandName === 'aktiflikbot') {
+                await interaction.deferReply().catch(() => {});
 
-        if (interaction.commandName === 'aktiflik') {
-            await interaction.deferReply({ ephemeral: true }).catch(() => {});
+                const embed = new EmbedBuilder()
+                    .setColor('#6366f1')
+                    .setTitle('🎮 Ventra x Letra Aktiflik Sistemi')
+                    .setDescription('Aşağıdaki butonları kullanarak kişisel puan istatistiklerinizi inceleyebilir veya sunucu liderlik tablosunu görüntüleyebilirsiniz.')
+                    .setTimestamp();
 
-            let db = readDB();
-            const key = `stats_${interaction.user.id}`;
-            const uData = db[key];
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('btn_puan')
+                        .setLabel('Puanını Gör')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('👤'),
+                    new ButtonBuilder()
+                        .setCustomId('btn_siralama')
+                        .setLabel('Sıralamayı Gör')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('🏆')
+                );
 
-            const embed = new EmbedBuilder()
-                .setColor('#0ea5e9')
-                .setTitle('👤 Ventra - Aktiflik Profiliniz')
-                .setTimestamp();
-
-            if (!uData || uData.total === 0) {
-                embed.setDescription('Henüz kayıtlı bir Letra aktiflik puanın bulunmuyor. Letra oynayarak puan kazanmaya başlayabilirsin!');
-            } else {
-                updateResetFields(uData);
-                embed.setDescription(`Hey <@${interaction.user.id}>, Letra sunucusundaki güncel istatistiklerin:`)
-                    .addFields(
-                        { name: '📅 Günlük Puan', value: `\`${uData.daily} Puan\``, inline: true },
-                        { name: '📆 Haftalık Puan', value: `\`${uData.weekly} Puan\``, inline: true },
-                        { name: '🗓️ Aylık Puan', value: `\`${uData.monthly} Puan\``, inline: true },
-                        { name: '🏆 Toplam Puan', value: `\`${uData.total} Puan\``, inline: false }
-                    );
+                await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
             }
-
-            await interaction.editReply({ embeds: [embed] }).catch(() => {});
         }
 
-        if (interaction.commandName === 'topaktiflik') {
-            await interaction.deferReply().catch(() => {});
+        // 2. BUTONLARA TIKLANDIĞINDA
+        if (interaction.isButton()) {
+            if (interaction.customId === 'btn_puan') {
+                await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
-            let db = readDB();
-            const leaderboard = Object.keys(db)
-                .filter(key => key.startsWith('stats_'))
-                .map(key => {
-                    const uData = db[key] || {};
+                let db = readDB();
+                const key = `stats_${interaction.user.id}`;
+                const uData = db[key];
+
+                const embed = new EmbedBuilder()
+                    .setColor('#0ea5e9')
+                    .setTitle('👤 Ventra - Aktiflik Profiliniz')
+                    .setTimestamp();
+
+                if (!uData || uData.total === 0) {
+                    embed.setDescription('Henüz kayıtlı bir Letra aktiflik puanın bulunmuyor. Letra oynayarak puan kazanmaya başlayabilirsin!');
+                } else {
                     updateResetFields(uData);
-                    return {
-                        userId: uData.id || key.replace('stats_', ''),
-                        displayName: uData.displayName || uData.username || 'Oyuncu',
-                        daily: uData.daily || 0,
-                        weekly: uData.weekly || 0,
-                        monthly: uData.monthly || 0,
-                        total: uData.total || 0
-                    };
-                })
-                .sort((a, b) => b.total - a.total)
-                .slice(0, 10);
+                    embed.setDescription(`Hey <@${interaction.user.id}>, Letra sunucusundaki güncel istatistiklerin:`)
+                        .addFields(
+                            { name: '📅 Günlük Puan', value: `\`${uData.daily} Puan\``, inline: true },
+                            { name: '📆 Haftalık Puan', value: `\`${uData.weekly} Puan\``, inline: true },
+                            { name: '🗓️ Aylık Puan', value: `\`${uData.monthly} Puan\``, inline: true },
+                            { name: '🏆 Toplam Puan', value: `\`${uData.total} Puan\``, inline: false }
+                        );
+                }
 
-            const embed = new EmbedBuilder()
-                .setColor('#10b981')
-                .setTitle('🏆 Ventra x Letra - Top 10 Liderlik Tablosu')
-                .setDescription('Ventra ekibinin Letra sunucusundaki en aktif ilk 10 oyuncusu:')
-                .setTimestamp();
-
-            if (leaderboard.length === 0) {
-                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Letra aktiflik puanı bulunmuyor.' });
-            } else {
-                let finalDesc = '';
-                leaderboard.forEach((item, index) => {
-                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                    finalDesc += `${medal} <@${item.userId}>\n> Günlük: \`${item.daily}\` | Haftalık: \`${item.weekly}\` | Aylık: \`${item.monthly}\` | **Toplam: \`${item.total} Puan\`**\n\n`;
-                });
-                embed.addFields({ name: '📊 Sıralama', value: finalDesc });
+                await interaction.editReply({ embeds: [embed] }).catch(() => {});
             }
 
-            await interaction.editReply({ embeds: [embed] }).catch(() => {});
+            if (interaction.customId === 'btn_siralama') {
+                await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+                let db = readDB();
+                const leaderboard = Object.keys(db)
+                    .filter(key => key.startsWith('stats_'))
+                    .map(key => {
+                        const uData = db[key] || {};
+                        updateResetFields(uData);
+                        return {
+                            userId: uData.id || key.replace('stats_', ''),
+                            displayName: uData.displayName || uData.username || 'Oyuncu',
+                            daily: uData.daily || 0,
+                            weekly: uData.weekly || 0,
+                            monthly: uData.monthly || 0,
+                            total: uData.total || 0
+                        };
+                    })
+                    .sort((a, b) => b.total - a.total)
+                    .slice(0, 10);
+
+                const embed = new EmbedBuilder()
+                    .setColor('#10b981')
+                    .setTitle('🏆 Ventra x Letra - Top 10 Liderlik Tablosu')
+                    .setDescription('Ventra ekibinin Letra sunucusundaki en aktif ilk 10 oyuncusu:')
+                    .setTimestamp();
+
+                if (leaderboard.length === 0) {
+                    embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Letra aktiflik puanı bulunmuyor.' });
+                } else {
+                    let finalDesc = '';
+                    leaderboard.forEach((item, index) => {
+                        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
+                        finalDesc += `${medal} <@${item.userId}>\n> Günlük: \`${item.daily}\` | Haftalık: \`${item.weekly}\` | Aylık: \`${item.monthly}\` | **Toplam: \`${item.total} Puan\`**\n\n`;
+                    });
+                    embed.addFields({ name: '📊 Sıralama', value: finalDesc });
+                }
+
+                await interaction.editReply({ embeds: [embed] }).catch(() => {});
+            }
         }
     } catch (err) {
         console.log("Interaction hata:", err);
