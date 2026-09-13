@@ -8,7 +8,7 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Bulut uyumlu basit ve kesintisiz JSON Veritabanı Sistemi
+// Bulut uyumlu kararlı JSON Veritabanı Sistemi
 const DB_FILE = path.join(__dirname, 'database.json');
 
 function readDB() {
@@ -85,7 +85,7 @@ function addPointToUser(member) {
     db[key] = userData;
     writeDB(db);
     
-    console.log(`[BAŞARIYla KAYDEDİLDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+    console.log(`[LETRA PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
 }
 
 // Web Paneli Rotası
@@ -136,7 +136,7 @@ client.once('ready', async () => {
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
-                .setDescription('Sunucudaki Counter aktifliği ve puan liderlik tablosunu görüntülersiniz.')
+                .setDescription('Sunucudaki Letra aktifliği ve puan liderlik tablosunu görüntülersiniz.')
                 .toJSON()
         ];
 
@@ -146,7 +146,7 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // HER 10 SANİYEDE BİR: İsmi "counter" geçen oyunları oynayanlara 1 puan ekle
+    // HER 10 SANİYEDE BİR: İsmi içinde "letra" geçen aktiviteyi kontrol et
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -157,13 +157,13 @@ client.once('ready', async () => {
             guild.members.cache.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
-                const isPlayingCounter = member.presence.activities.some(act => {
+                const isPlayingLetra = member.presence.activities.some(act => {
                     if (!act || act.type !== 0) return false; // Tür 0: Oynuyor
                     const gameName = act.name.toLowerCase();
-                    return gameName.includes('counter');
+                    return gameName.includes('letra');
                 });
                 
-                if (isPlayingCounter) {
+                if (isPlayingLetra) {
                     addPointToUser(member);
                 }
             });
@@ -197,12 +197,12 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('🏆 Letra XII - Counter Puan Sıralaması')
-                .setDescription('Sunucudaki en yüksek puanlı Counter oyuncuları:')
+                .setTitle('🏆 Letra - Puan Sıralaması')
+                .setDescription('Sunucudaki en yüksek puanlı Letra oyuncuları:')
                 .setTimestamp();
 
             if (leaderboard.length === 0) {
-                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Counter puanı bulunmuyor.' });
+                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Letra puanı bulunmuyor.' });
             } else {
                 let finalDesc = '';
                 leaderboard.forEach((item, index) => {
