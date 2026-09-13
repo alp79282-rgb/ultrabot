@@ -30,13 +30,13 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Tarih Yardımcı Fonksiyonları
+// Zaman Anahtarları
 function getTodayKey() {
-    return new Date().toISOString().split('T')[0]; // Örn: 2026-09-13
+    return new Date().toISOString().split('T')[0];
 }
 
 function getMonthKey() {
-    return getTodayKey().substring(0, 7); // Örn: 2026-09
+    return getTodayKey().substring(0, 7);
 }
 
 function getWeekKey() {
@@ -45,10 +45,10 @@ function getWeekKey() {
     date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
     const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
     const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-    return `${date.getUTCFullYear()}-W${weekNo}`; // Örn: 2026-W37
+    return `${date.getUTCFullYear()}-W${weekNo}`;
 }
 
-// Puanı "X Saat Y Dakika" Formatına Çeviren Fonksiyon
+// Tam Sapmasız Süre Hesaplama (Her 1 puan = 10 saniye)
 function formatTime(puan) {
     if (!puan || puan <= 0) return '0 dk';
     const toplamSaniye = puan * 10;
@@ -56,14 +56,14 @@ function formatTime(puan) {
     const dakika = Math.floor((toplamSaniye % 3600) / 60);
     const saniye = toplamSaniye % 60;
 
-    let res = '';
-    if (saat > 0) res += `${saat} saat `;
-    if (dakika > 0) res += `${dakika} dk `;
-    if (saat === 0 && dakika === 0) res = `${saniye} sn`;
-    return res.trim();
+    let res = [];
+    if (saat > 0) res.push(`${saat} sa`);
+    if (dakika > 0 || saat > 0) res.push(`${dakika} dk`);
+    if (res.length === 0) res.push(`${saniye} sn`);
+    return res.join(' ');
 }
 
-// Web Paneli Rotaları
+// Web Paneli Rotası
 app.get('/', async (req, res) => {
     try {
         let rawData = db.all();
@@ -125,7 +125,7 @@ client.once('ready', async () => {
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
-                .setDescription('Kişisel Letra XII oyun sürenizi ve detaylı istatistiklerinizi görüntülersiniz.')
+                .setDescription('Sunucudaki genel oyun aktifliği ve süre liderlik tablosunu görüntülersiniz.')
                 .toJSON()
         ];
 
@@ -135,7 +135,7 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // ARKA PLAN TARAMASI (10 Saniyede Bir)
+    // ARKA PLAN TARAMASI (Her 10 saniyede bir)
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -156,24 +156,21 @@ client.once('ready', async () => {
                         const name = act.name.toLowerCase();
                         if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
                             
-                            // Kullanıcı veri yapısını çek veya oluştur
                             let userData = db.get(`stats_${member.id}`) || {
                                 id: member.id,
                                 username: member.user.username,
                                 displayName: member.displayName || member.user.globalName || member.user.username,
                                 avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }),
-                                total: db.get(`aktiflik_${member.id}`) || 0,
+                                total: 0,
                                 daily: {},
                                 weekly: {},
                                 monthly: {}
                             };
 
-                            // Profil bilgilerini güncelle
                             userData.username = member.user.username;
                             userData.displayName = member.displayName || member.user.globalName || member.user.username;
                             userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 });
 
-                            // Süre puanlarını artır
                             userData.total = (userData.total || 0) + 1;
                             
                             if (!userData.daily) userData.daily = {};
@@ -185,9 +182,7 @@ client.once('ready', async () => {
                             if (!userData.monthly) userData.monthly = {};
                             userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
 
-                            // Veritabanına kaydet
                             db.set(`stats_${member.id}`, userData);
-                            console.log(`[OYUN YAKALANDI] ${userData.displayName} (${member.user.username}) | Toplam: ${formatTime(userData.total)}`);
                         }
                     }
                 });
@@ -198,7 +193,7 @@ client.once('ready', async () => {
     }, 10000);
 });
 
-// Slash Komutu (/aktiflikbot)
+// Slash Komutu (/aktiflikbot -> Liderlik Tablosu)
 client.on('interactionCreate', async interaction => {
     try {
         if (!interaction.isChatInputCommand()) return;
@@ -206,32 +201,43 @@ client.on('interactionCreate', async interaction => {
         if (interaction.commandName === 'aktiflikbot') {
             await interaction.deferReply().catch(() => {});
 
-            const todayKey = getTodayKey();
-            const weekKey = getWeekKey();
-            const monthKey = getMonthKey();
+            let rawData = db.all();
+            let allData = [];
 
-            const userData = db.get(`stats_${interaction.user.id}`);
+            if (Array.isArray(rawData)) {
+                allData = rawData.map(item => ({ ID: item.ID || item.key, data: item.data || item.value }));
+            } else if (rawData && typeof rawData === 'object') {
+                allData = Object.entries(rawData).map(([ID, val]) => ({ ID, data: typeof val === 'object' ? (val.data || val.value) : val }));
+            }
+
+            const leaderboard = allData
+                .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('stats_'))
+                .map(item => {
+                    const uData = item.data || {};
+                    return {
+                        userId: uData.id || item.ID.replace('stats_', ''),
+                        displayName: uData.displayName || uData.username || 'Bilinmiyor',
+                        total: uData.total || 0
+                    };
+                })
+                .sort((a, b) => b.total - a.total)
+                .slice(0, 10);
 
             const embed = new EmbedBuilder()
-                .setColor('#0ea5e9')
-                .setTitle(`🎮 ${interaction.user.username} - Letra XII Aktiflik İstatistikleri`)
-                .setThumbnail(interaction.user.displayAvatarURL({ extension: 'png' }))
+                .setColor('#5865F2')
+                .setTitle('🏆 Letra XII - Sunucu Aktiflik Liderlik Tablosu')
+                .setDescription('En çok oyun oynayan üyelerin sıralaması aşağıdadır:')
                 .setTimestamp();
 
-            if (!userData) {
-                embed.setDescription('Henüz kaydedilmiş bir oyun süreniz bulunmuyor.');
+            if (leaderboard.length === 0) {
+                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir veri bulunmuyor.' });
             } else {
-                const daily = formatTime((userData.daily && userData.daily[todayKey]) || 0);
-                const weekly = formatTime((userData.weekly && userData.weekly[weekKey]) || 0);
-                const monthly = formatTime((userData.monthly && userData.monthly[monthKey]) || 0);
-                const total = formatTime(userData.total || 0);
-
-                embed.addFields(
-                    { name: '📅 Bugün', value: `\`${daily}\``, inline: true },
-                    { name: '🗓️ Bu Hafta', value: `\`${weekly}\``, inline: true },
-                    { name: '📆 Bu Ay', value: `\`${monthly}\``, inline: true },
-                    { name: '🏆 Toplam Süre', value: `\`${total}\``, inline: false }
-                );
+                let desc = '';
+                leaderboard.forEach((user, index) => {
+                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
+                    desc += `${medal} <@${user.userId}> — \`${formatTime(user.total)}\`\n`;
+                });
+                embed.addFields({ name: 'Sıralama', value: desc });
             }
 
             await interaction.editReply({ embeds: [embed] }).catch(() => {});
