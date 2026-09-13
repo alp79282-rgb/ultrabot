@@ -28,7 +28,7 @@ app.use(session({
     saveUninitialized: false
 }));
 
-// BURAYA EKİP ROLÜNÜN ID'SİNİ YAZACAKSIN
+// BURAYA EKİP ROLÜNÜN ID'SİNİ YAZMIŞTIN
 const EKIP_ROL_ID = 'BURAYA_EKIP_ROL_ID_Gelecek'; 
 
 app.get('/', async (req, res) => {
@@ -73,23 +73,27 @@ client.once('ready', async () => {
     }
 });
 
-// Sadece belirtilen EKİP ROLÜNE sahip olanları takip eden presenceUpdate
+// TEST İÇİN GEÇİCİ OLARAK CS2 (Counter-Strike) YAPTIK
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
     try {
         if (!newPresence || !newPresence.member) return;
         
-        // Ekip rolü kontrolü (Eğer rolü yoksa direkt yoksay / hiçe say)
+        // Eğer ekip rolü filtresini test etmek istemiyorsan aşağıdaki rol kontrolünü geçici olarak devre dışı bırakabilirsin
         if (EKIP_ROL_ID !== 'BURAYA_EKIP_ROL_ID_Gelecek' && !newPresence.member.roles.cache.has(EKIP_ROL_ID)) {
             return; 
         }
 
         const userId = newPresence.member.id;
-        const playingLetra = newPresence.activities.find(act => act.name && act.name.toLowerCase().includes('letra xii'));
+        // Burada oyun adını 'counter-strike' veya 'cs2' olarak aratıyoruz
+        const playingTestGame = newPresence.activities.find(act => 
+            act.name && (act.name.toLowerCase().includes('counter-strike') || act.name.toLowerCase().includes('cs2'))
+        );
 
-        if (playingLetra) {
+        if (playingTestGame) {
             let currentCount = 0;
             try { currentCount = db.get(`aktiflik_${userId}`) || 0; } catch(e){}
             try { db.set(`aktiflik_${userId}`, currentCount + 1); } catch(e){}
+            console.log(`[TEST] ${newPresence.member.user.tag} için aktiflik puanı eklendi! Toplam: ${currentCount + 1}`);
         }
     } catch (err) {}
 });
@@ -110,12 +114,12 @@ client.on('interactionCreate', async interaction => {
                     userId: item.ID.replace('aktiflik_', ''),
                     score: item.data || 0
                 }))
-                .sort((a, b) => b.score - a.score)
+                .sort((a, b) => b.score - b.score) // Büyükten küçüğe
                 .slice(0, 10);
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('🏆 Letra XII - Ekip Aktiflik Sıralaması')
+                .setTitle('🏆 Letra XII - Test Aktiflik Sıralaması (CS2)')
                 .setTimestamp();
 
             if (leaderboard.length === 0) {
