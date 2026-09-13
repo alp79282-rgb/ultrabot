@@ -28,15 +28,33 @@ app.use(session({
     saveUninitialized: false
 }));
 
-const EKIP_ROL_ID = 'BURAYA_EKIP_ROL_ID_Gelecek'; // Test aşamasında değiştirmene gerek yok
+const GUILD_ID = '1530348723958321262';
 
+// Web Paneli (Puanları otomatik Saat/Dakika formatına çevirir)
 app.get('/', async (req, res) => {
     try {
         let rawData = db.all();
         let allData = Array.isArray(rawData) ? rawData : [];
+        
         const activeRecords = allData
             .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
-            .map(item => ({ userId: item.ID.replace('aktiflik_', ''), time: item.data }));
+            .map(item => {
+                const userId = item.ID.replace('aktiflik_', '');
+                const puan = item.data || 0;
+                
+                // 1 puan = 10 saniye. Toplam saniyeyi hesapla:
+                const toplamSaniye = puan * 10;
+                const saat = Math.floor(toplamSaniye / 3600);
+                const dakika = Math.floor((toplamSaniye % 3600) / 60);
+                const saniye = toplamSaniye % 60;
+
+                let sureStr = '';
+                if (saat > 0) sureStr += `${saat} Saat `;
+                if (dakika > 0 || saat > 0) sureStr += `${dakika} Dakika `;
+                if (sureStr === '') sureStr = `${saniye} Saniye`;
+
+                return { userId, time: sureStr, rawScore: puan };
+            });
         
         res.render('index', { 
             bot: client.user ? { username: client.user.username } : null, 
@@ -44,6 +62,7 @@ app.get('/', async (req, res) => {
             stats: { guilds: client.guilds.cache.size, users: 0, activeCount: activeRecords.length } 
         });
     } catch (e) {
+        console.error("Web panel hata:", e);
         res.render('index', { bot: null, records: [], stats: { guilds: 0, users: 0, activeCount: 0 } });
     }
 });
@@ -54,7 +73,6 @@ client.once('ready', async () => {
     console.log(`[🚀 BOT AKTİF] ${client.user.tag}`);
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-    const GUILD_ID = '1530348723958321262';
     const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
@@ -66,37 +84,63 @@ client.once('ready', async () => {
         ];
 
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('[BAŞARILI] /aktiflikbot komutu güncellendi!');
+        console.log('[BAŞARILI] /aktiflikbot komutu yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
+
+    // ARKA PLAN TARAMASI (Her 10 saniyede bir CS2 veya Letra oynayanları yakalar)
+    setInterval(async () => {
+        try {
+            const guild = client.guilds.cache.get(GUILD_ID);
+            if (!guild) return;
+
+            await guild.members.fetch({ withPresences: true }).catch(() => {});
+
+            guild.members.cache.forEach(member => {
+                if (!member.presence || !member.presence.activities) return;
+
+                const playingGame = member.presence.activities.find(act => {
+                    if (!act.name) return false;
+                    const name = act.name.toLowerCase();
+                    return name.includes('counter') || name.includes('cs') || name.includes('letra');
+                });
+
+                if (playingGame) {
+                    let currentCount = 0;
+                    try { currentCount = db.get(`aktiflik_${member.id}`) || 0; } catch(e){}
+                    db.set(`aktiflik_${member.id}`, currentCount + 1);
+                }
+            });
+        } catch (err) {
+            console.error("Periyodik tarama hatası:", err);
+        }
+    }, 10000);
 });
 
-// Oyun takibi (CS2 veya Letra XII)
+// Anlık durum değişimlerini yakalar
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
     try {
         if (!newPresence || !newPresence.member) return;
         
-        if (EKIP_ROL_ID !== 'BURAYA_EKIP_ROL_ID_Gelecek' && !newPresence.member.roles.cache.has(EKIP_ROL_ID)) {
-            return; 
-        }
-
-        const userId = newPresence.member.id;
-        const playingGame = newPresence.activities.find(act => 
-            act.name && (act.name.toLowerCase().includes('counter-strike') || act.name.toLowerCase().includes('cs2') || act.name.toLowerCase().includes('letra xii'))
-        );
+        const member = newPresence.member;
+        const playingGame = newPresence.activities.find(act => {
+            if (!act.name) return false;
+            const name = act.name.toLowerCase();
+            return name.includes('counter') || name.includes('cs') || name.includes('letra');
+        });
 
         if (playingGame) {
             let currentCount = 0;
-            try { currentCount = db.get(`aktiflik_${userId}`) || 0; } catch(e){}
-            db.set(`aktiflik_${userId}`, currentCount + 1);
-            console.log(`[KAYIT] ${newPresence.member.user.tag} oynuyor. Puan: ${currentCount + 1}`);
+            try { currentCount = db.get(`aktiflik_${member.id}`) || 0; } catch(e){}
+            db.set(`aktiflik_${member.id}`, currentCount + 1);
         }
     } catch (err) {
         console.error("Presence hata:", err);
     }
 });
 
+// Komut yönetimi
 client.on('interactionCreate', async interaction => {
     try {
         if (!interaction.isChatInputCommand()) return;
@@ -109,11 +153,20 @@ client.on('interactionCreate', async interaction => {
             
             const leaderboard = allData
                 .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
-                .map(item => ({
-                    userId: item.ID.replace('aktiflik_', ''),
-                    score: item.data || 0
-                }))
-                .sort((a, b) => b.score - a.score)
+                .map(item => {
+                    const userId = item.ID.replace('aktiflik_', '');
+                    const puan = item.data || 0;
+                    const toplamSaniye = puan * 10;
+                    const saat = Math.floor(toplamSaniye / 3600);
+                    const dakika = Math.floor((toplamSaniye % 3600) / 60);
+
+                    let sureStr = '';
+                    if (saat > 0) sureStr += `${saat} Saat `;
+                    sureStr += `${dakika} Dakika`;
+
+                    return { userId, scoreStr: sureStr, raw: puan };
+                })
+                .sort((a, b) => b.raw - a.raw)
                 .slice(0, 10);
 
             const embed = new EmbedBuilder()
@@ -127,7 +180,7 @@ client.on('interactionCreate', async interaction => {
                 let description = '';
                 leaderboard.forEach((item, index) => {
                     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                    description += `${medal} <@${item.userId}> — **${item.score}** Puan\n`;
+                    description += `${medal} <@${item.userId}> — **${item.scoreStr}**\n`;
                 });
                 embed.setDescription(description);
             }
