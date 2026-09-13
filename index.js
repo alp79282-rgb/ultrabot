@@ -30,58 +30,86 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Web Paneli (Tüm croxydb formatlarını destekleyecek şekilde güncellendi)
+// Tarih Yardımcı Fonksiyonları
+function getTodayKey() {
+    return new Date().toISOString().split('T')[0]; // Örn: 2026-09-13
+}
+
+function getMonthKey() {
+    return getTodayKey().substring(0, 7); // Örn: 2026-09
+}
+
+function getWeekKey() {
+    const d = new Date();
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+    return `${date.getUTCFullYear()}-W${weekNo}`; // Örn: 2026-W37
+}
+
+// Puanı "X Saat Y Dakika" Formatına Çeviren Fonksiyon
+function formatTime(puan) {
+    if (!puan || puan <= 0) return '0 dk';
+    const toplamSaniye = puan * 10;
+    const saat = Math.floor(toplamSaniye / 3600);
+    const dakika = Math.floor((toplamSaniye % 3600) / 60);
+    const saniye = toplamSaniye % 60;
+
+    let res = '';
+    if (saat > 0) res += `${saat} saat `;
+    if (dakika > 0) res += `${dakika} dk `;
+    if (saat === 0 && dakika === 0) res = `${saniye} sn`;
+    return res.trim();
+}
+
+// Web Paneli Rotaları
 app.get('/', async (req, res) => {
     try {
         let rawData = db.all();
-        let activeRecords = [];
+        let allData = [];
 
-        // Verinin formatı ne olursa olsun (Array veya Object) güvenle okur
         if (Array.isArray(rawData)) {
-            activeRecords = rawData
-                .filter(item => item && (item.ID || item.key) && String(item.ID || item.key).startsWith('aktiflik_'))
-                .map(item => {
-                    const key = item.ID || item.key;
-                    const userId = key.replace('aktiflik_', '');
-                    const puan = item.data || item.value || 0;
-                    
-                    const toplamSaniye = puan * 10;
-                    const saat = Math.floor(toplamSaniye / 3600);
-                    const dakika = Math.floor((toplamSaniye % 3600) / 60);
-
-                    let sureStr = '';
-                    if (saat > 0) sureStr += `${saat} Saat `;
-                    sureStr += `${dakika} Dakika`;
-
-                    return { userId, time: sureStr, rawScore: puan };
-                });
+            allData = rawData.map(item => ({ ID: item.ID || item.key, data: item.data || item.value }));
         } else if (rawData && typeof rawData === 'object') {
-            activeRecords = Object.entries(rawData)
-                .filter(([key]) => key.startsWith('aktiflik_'))
-                .map(([key, value]) => {
-                    const userId = key.replace('aktiflik_', '');
-                    const puan = typeof value === 'object' ? (value.data || value.value || 0) : (value || 0);
-                    
-                    const toplamSaniye = puan * 10;
-                    const saat = Math.floor(toplamSaniye / 3600);
-                    const dakika = Math.floor((toplamSaniye % 3600) / 60);
-
-                    let sureStr = '';
-                    if (saat > 0) sureStr += `${saat} Saat `;
-                    sureStr += `${dakika} Dakika`;
-
-                    return { userId, time: sureStr, rawScore: puan };
-                });
+            allData = Object.entries(rawData).map(([ID, val]) => ({ ID, data: typeof val === 'object' ? (val.data || val.value) : val }));
         }
+
+        const todayKey = getTodayKey();
+        const weekKey = getWeekKey();
+        const monthKey = getMonthKey();
+
+        const activeRecords = allData
+            .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('stats_'))
+            .map(item => {
+                const uData = item.data || {};
+                const dailyPoints = (uData.daily && uData.daily[todayKey]) || 0;
+                const weeklyPoints = (uData.weekly && uData.weekly[weekKey]) || 0;
+                const monthlyPoints = (uData.monthly && uData.monthly[monthKey]) || 0;
+                const totalPoints = uData.total || 0;
+
+                return {
+                    userId: uData.id || item.ID.replace('stats_', ''),
+                    username: uData.username || 'Bilinmiyor',
+                    displayName: uData.displayName || uData.username || 'Bilinmiyor',
+                    avatar: uData.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png',
+                    dailyStr: formatTime(dailyPoints),
+                    weeklyStr: formatTime(weeklyPoints),
+                    monthlyStr: formatTime(monthlyPoints),
+                    totalStr: formatTime(totalPoints),
+                    rawTotal: totalPoints
+                };
+            })
+            .sort((a, b) => b.rawTotal - a.rawTotal);
 
         res.render('index', { 
             bot: client.user ? { username: client.user.username } : null, 
             records: activeRecords, 
-            stats: { guilds: client.guilds.cache.size, users: 0, activeCount: activeRecords.length } 
+            stats: { guilds: client.guilds.cache.size, activeCount: activeRecords.length } 
         });
     } catch (e) {
         console.error("Web panel hata:", e);
-        res.render('index', { bot: null, records: [], stats: { guilds: 0, users: 0, activeCount: 0 } });
+        res.render('index', { bot: null, records: [], stats: { guilds: 0, activeCount: 0 } });
     }
 });
 
@@ -97,7 +125,7 @@ client.once('ready', async () => {
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
-                .setDescription('Kişisel Letra XII oyun sürenizi ve aktiflik durumunuzu görüntülersiniz.')
+                .setDescription('Kişisel Letra XII oyun sürenizi ve detaylı istatistiklerinizi görüntülersiniz.')
                 .toJSON()
         ];
 
@@ -107,7 +135,7 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // ARKA PLAN TARAMASI (Her 10 saniyede bir)
+    // ARKA PLAN TARAMASI (10 Saniyede Bir)
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -116,6 +144,10 @@ client.once('ready', async () => {
             const members = await guild.members.fetch({ withPresences: true }).catch(() => null);
             if (!members) return;
 
+            const todayKey = getTodayKey();
+            const weekKey = getWeekKey();
+            const monthKey = getMonthKey();
+
             members.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
@@ -123,10 +155,39 @@ client.once('ready', async () => {
                     if (act && act.name) {
                         const name = act.name.toLowerCase();
                         if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
-                            let currentCount = 0;
-                            try { currentCount = db.get(`aktiflik_${member.id}`) || 0; } catch(e){}
-                            db.set(`aktiflik_${member.id}`, currentCount + 1);
-                            console.log(`[OYUN YAKALANDI] Kullanıcı: ${member.user.tag} | Oyun: ${act.name} | Toplam Puan: ${currentCount + 1}`);
+                            
+                            // Kullanıcı veri yapısını çek veya oluştur
+                            let userData = db.get(`stats_${member.id}`) || {
+                                id: member.id,
+                                username: member.user.username,
+                                displayName: member.displayName || member.user.globalName || member.user.username,
+                                avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }),
+                                total: db.get(`aktiflik_${member.id}`) || 0,
+                                daily: {},
+                                weekly: {},
+                                monthly: {}
+                            };
+
+                            // Profil bilgilerini güncelle
+                            userData.username = member.user.username;
+                            userData.displayName = member.displayName || member.user.globalName || member.user.username;
+                            userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 });
+
+                            // Süre puanlarını artır
+                            userData.total = (userData.total || 0) + 1;
+                            
+                            if (!userData.daily) userData.daily = {};
+                            userData.daily[todayKey] = (userData.daily[todayKey] || 0) + 1;
+
+                            if (!userData.weekly) userData.weekly = {};
+                            userData.weekly[weekKey] = (userData.weekly[weekKey] || 0) + 1;
+
+                            if (!userData.monthly) userData.monthly = {};
+                            userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
+
+                            // Veritabanına kaydet
+                            db.set(`stats_${member.id}`, userData);
+                            console.log(`[OYUN YAKALANDI] ${userData.displayName} (${member.user.username}) | Toplam: ${formatTime(userData.total)}`);
                         }
                     }
                 });
@@ -137,7 +198,7 @@ client.once('ready', async () => {
     }, 10000);
 });
 
-// Komut yönetimi (/aktiflikbot)
+// Slash Komutu (/aktiflikbot)
 client.on('interactionCreate', async interaction => {
     try {
         if (!interaction.isChatInputCommand()) return;
@@ -145,46 +206,32 @@ client.on('interactionCreate', async interaction => {
         if (interaction.commandName === 'aktiflikbot') {
             await interaction.deferReply().catch(() => {});
 
-            let rawData = db.all();
-            let allData = [];
-            if (Array.isArray(rawData)) {
-                allData = rawData.map(item => ({ ID: item.ID || item.key, data: item.data || item.value }));
-            } else if (rawData && typeof rawData === 'object') {
-                allData = Object.entries(rawData).map(([ID, val]) => ({ ID, data: typeof val === 'object' ? (val.data || val.value) : val }));
-            }
-            
-            const leaderboard = allData
-                .filter(item => item && item.ID && typeof item.ID === 'string' && item.ID.startsWith('aktiflik_'))
-                .map(item => {
-                    const userId = item.ID.replace('aktiflik_', '');
-                    const puan = item.data || 0;
-                    const toplamSaniye = puan * 10;
-                    const saat = Math.floor(toplamSaniye / 3600);
-                    const dakika = Math.floor((toplamSaniye % 3600) / 60);
+            const todayKey = getTodayKey();
+            const weekKey = getWeekKey();
+            const monthKey = getMonthKey();
 
-                    let sureStr = '';
-                    if (saat > 0) sureStr += `${saat} Saat `;
-                    sureStr += `${dakika} Dakika`;
-
-                    return { userId, scoreStr: sureStr, raw: puan };
-                })
-                .sort((a, b) => b.raw - a.raw)
-                .slice(0, 10);
+            const userData = db.get(`stats_${interaction.user.id}`);
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('🏆 Letra XII - Aktiflik Sıralaması')
+                .setTitle(`🎮 ${interaction.user.username} - Letra XII Aktiflik İstatistikleri`)
+                .setThumbnail(interaction.user.displayAvatarURL({ extension: 'png' }))
                 .setTimestamp();
 
-            if (leaderboard.length === 0) {
-                embed.setDescription('Henüz kaydedilmiş bir aktiflik verisi bulunmuyor.');
+            if (!userData) {
+                embed.setDescription('Henüz kaydedilmiş bir oyun süreniz bulunmuyor.');
             } else {
-                let description = '';
-                leaderboard.forEach((item, index) => {
-                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
-                    description += `${medal} <@${item.userId}> — **${item.scoreStr}**\n`;
-                });
-                embed.setDescription(description);
+                const daily = formatTime((userData.daily && userData.daily[todayKey]) || 0);
+                const weekly = formatTime((userData.weekly && userData.weekly[weekKey]) || 0);
+                const monthly = formatTime((userData.monthly && userData.monthly[monthKey]) || 0);
+                const total = formatTime(userData.total || 0);
+
+                embed.addFields(
+                    { name: '📅 Bugün', value: `\`${daily}\``, inline: true },
+                    { name: '🗓️ Bu Hafta', value: `\`${weekly}\``, inline: true },
+                    { name: '📆 Bu Ay', value: `\`${monthly}\``, inline: true },
+                    { name: '🏆 Toplam Süre', value: `\`${total}\``, inline: false }
+                );
             }
 
             await interaction.editReply({ embeds: [embed] }).catch(() => {});
