@@ -30,7 +30,7 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Zaman Anahtarları
+// Tarih Anahtarları
 function getTodayKey() {
     return new Date().toISOString().split('T')[0];
 }
@@ -135,15 +135,14 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // ARKA PLAN TARAMASI (Her 10 saniyede bir - Kesintisiz Güncelleme)
+    // HER 10 SANİYEDE BİR: Sunucudaki herkesi doğrudan tara ve oyunda olanların süresini artır
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
             if (!guild) return;
 
-            // Üyeleri ve presenceları zorla cache'e çektiriyoruz
-            const members = await guild.members.fetch({ force: true }).catch(() => null);
-            if (!members) return;
+            // Üyelerin güncel durumlarını önbelleğe zorla çektir
+            await guild.members.fetch({ withPresences: true }).catch(() => {});
 
             const todayKey = getTodayKey();
             const weekKey = getWeekKey();
@@ -152,43 +151,46 @@ client.once('ready', async () => {
             guild.members.cache.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
+                let isPlaying = false;
                 member.presence.activities.forEach(act => {
                     if (act && act.name) {
                         const name = act.name.toLowerCase();
-                        // CS2 veya Letra içeren oyun durumlarını yakalar
                         if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
-                            
-                            let userData = db.get(`stats_${member.id}`) || {
-                                id: member.id,
-                                username: member.user.username,
-                                displayName: member.displayName || member.user.globalName || member.user.username,
-                                avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }),
-                                total: 0,
-                                daily: {},
-                                weekly: {},
-                                monthly: {}
-                            };
-
-                            userData.username = member.user.username;
-                            userData.displayName = member.displayName || member.user.globalName || member.user.username;
-                            userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 });
-
-                            userData.total = (userData.total || 0) + 1;
-                            
-                            if (!userData.daily) userData.daily = {};
-                            userData.daily[todayKey] = (userData.daily[todayKey] || 0) + 1;
-
-                            if (!userData.weekly) userData.weekly = {};
-                            userData.weekly[weekKey] = (userData.weekly[weekKey] || 0) + 1;
-
-                            if (!userData.monthly) userData.monthly = {};
-                            userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
-
-                            db.set(`stats_${member.id}`, userData);
-                            console.log(`[SÜRE EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+                            isPlaying = true;
                         }
                     }
                 });
+
+                if (isPlaying) {
+                    let userData = db.get(`stats_${member.id}`) || {
+                        id: member.id,
+                        username: member.user.username,
+                        displayName: member.displayName || member.user.globalName || member.user.username,
+                        avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }),
+                        total: 0,
+                        daily: {},
+                        weekly: {},
+                        monthly: {}
+                    };
+
+                    userData.username = member.user.username;
+                    userData.displayName = member.displayName || member.user.globalName || member.user.username;
+                    userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 });
+
+                    userData.total = (userData.total || 0) + 1;
+                    
+                    if (!userData.daily) userData.daily = {};
+                    userData.daily[todayKey] = (userData.daily[todayKey] || 0) + 1;
+
+                    if (!userData.weekly) userData.weekly = {};
+                    userData.weekly[weekKey] = (userData.weekly[weekKey] || 0) + 1;
+
+                    if (!userData.monthly) userData.monthly = {};
+                    userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
+
+                    db.set(`stats_${member.id}`, userData);
+                    console.log(`[SÜRE ARTirILDI] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+                }
             });
         } catch (err) {
             console.error("Periyodik tarama hatası:", err);
