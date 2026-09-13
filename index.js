@@ -121,7 +121,7 @@ function addPointToUser(member) {
     db[key] = userData;
     writeDB(db);
     
-    console.log(`[VENTRA PUAN EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
+    console.log(`[VENTRA - LETRA AKTİFLİK] ${userData.displayName} puan aldı | Toplam: ${userData.total}`);
 }
 
 // Web Paneli Rotası (Günlük, Haftalık, Aylık, Total destekli)
@@ -171,7 +171,7 @@ client.once('ready', async () => {
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikbot')
-                .setDescription('Sunucudaki Ventra aktiflik ve süre liderlik tablosunu görüntülersiniz.')
+                .setDescription('Ventra ekibine ait Letra aktiflik ve süre liderlik tablosunu görüntülersiniz.')
                 .toJSON()
         ];
 
@@ -181,7 +181,7 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // HER 10 SANİYEDE BİR: İsmi içinde "ventra" geçen aktiviteyi kontrol et
+    // HER 10 SANİYEDE BİR: İsmi içinde "letra" geçen aktiviteyi kontrol et (Örn: Letra XII)
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
@@ -192,13 +192,13 @@ client.once('ready', async () => {
             guild.members.cache.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
-                const isPlayingVentra = member.presence.activities.some(act => {
+                const isPlayingLetra = member.presence.activities.some(act => {
                     if (!act || act.type !== 0) return false; // Tür 0: Oynuyor
                     const gameName = act.name.toLowerCase();
-                    return gameName.includes('ventra');
+                    return gameName.includes('letra');
                 });
                 
-                if (isPlayingVentra) {
+                if (isPlayingLetra) {
                     addPointToUser(member);
                 }
             });
@@ -236,12 +236,12 @@ client.on('interactionCreate', async interaction => {
 
             const embed = new EmbedBuilder()
                 .setColor('#0ea5e9')
-                .setTitle('🏆 Ventra - Detaylı Aktiflik Sıralaması')
-                .setDescription('Sunucudaki oyuncuların Günlük, Haftalık, Aylık ve Toplam istatistikleri:')
+                .setTitle('🏆 Ventra x Letra - Aktiflik Sıralaması')
+                .setDescription('Ventra ekibinin Letra sunucusu oyuncularının Günlük, Haftalık, Aylık ve Toplam istatistikleri:')
                 .setTimestamp();
 
             if (leaderboard.length === 0) {
-                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Ventra puanı bulunmuyor.' });
+                embed.addFields({ name: 'Durum', value: 'Henüz kaydedilmiş bir Letra aktiflik puanı bulunmuyor.' });
             } else {
                 let finalDesc = '';
                 leaderboard.forEach((item, index) => {
