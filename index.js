@@ -8,7 +8,6 @@ const db = require('croxydb');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// DİKKAT: Presence verilerinin bellekte tutulması için cache ayarı eklendi!
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -18,7 +17,7 @@ const client = new Client({
     ],
     makeCache: Options.cacheWithLimits({
         ...Options.DefaultMakeCacheSettings,
-        PresenceManager: Infinity, // Oyun/Durum verilerinin silinmesini önler
+        PresenceManager: Infinity,
     })
 });
 
@@ -66,6 +65,44 @@ function formatTime(puan) {
     if (dakika > 0 || saat > 0) res.push(`${dakika} dk`);
     if (res.length === 0) res.push(`${saniye} sn`);
     return res.join(' ');
+}
+
+// Puan Ekleme Yardımcı Fonksiyonu
+function addPointToUser(member) {
+    if (!member || !member.user) return;
+
+    const todayKey = getTodayKey();
+    const weekKey = getWeekKey();
+    const monthKey = getMonthKey();
+
+    let userData = db.get(`stats_${member.id}`) || {
+        id: member.id,
+        username: member.user.username,
+        displayName: member.displayName || member.user.globalName || member.user.username,
+        avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }),
+        total: 0,
+        daily: {},
+        weekly: {},
+        monthly: {}
+    };
+
+    userData.username = member.user.username;
+    userData.displayName = member.displayName || member.user.globalName || member.user.username;
+    userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 });
+
+    userData.total = (userData.total || 0) + 1;
+    
+    if (!userData.daily) userData.daily = {};
+    userData.daily[todayKey] = (userData.daily[todayKey] || 0) + 1;
+
+    if (!userData.weekly) userData.weekly = {};
+    userData.weekly[weekKey] = (userData.weekly[weekKey] || 0) + 1;
+
+    if (!userData.monthly) userData.monthly = {};
+    userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
+
+    db.set(`stats_${member.id}`, userData);
+    console.log(`[SÜRE EKLENDİ] ${userData.displayName} | Toplam Puan: ${userData.total}`);
 }
 
 // Web Paneli Rotası
@@ -140,64 +177,48 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // HER 10 SANİYEDE BİR: Etkinlikte görünen herkesin dakikasını artır
+    // ARKA PLAN DÖNGÜSÜ: Her 10 saniyede bir etkinlikte görünenleri tara
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
             if (!guild) return;
 
-            const todayKey = getTodayKey();
-            const weekKey = getWeekKey();
-            const monthKey = getMonthKey();
-
             guild.members.cache.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
-                let isPlaying = false;
                 member.presence.activities.forEach(act => {
                     if (act && act.name) {
                         const name = act.name.toLowerCase();
                         if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
-                            isPlaying = true;
+                            addPointToUser(member);
                         }
                     }
                 });
-
-                if (isPlaying) {
-                    let userData = db.get(`stats_${member.id}`) || {
-                        id: member.id,
-                        username: member.user.username,
-                        displayName: member.displayName || member.user.globalName || member.user.username,
-                        avatar: member.user.displayAvatarURL({ extension: 'png', size: 128 }),
-                        total: 0,
-                        daily: {},
-                        weekly: {},
-                        monthly: {}
-                    };
-
-                    userData.username = member.user.username;
-                    userData.displayName = member.displayName || member.user.globalName || member.user.username;
-                    userData.avatar = member.user.displayAvatarURL({ extension: 'png', size: 128 });
-
-                    userData.total = (userData.total || 0) + 1;
-                    
-                    if (!userData.daily) userData.daily = {};
-                    userData.daily[todayKey] = (userData.daily[todayKey] || 0) + 1;
-
-                    if (!userData.weekly) userData.weekly = {};
-                    userData.weekly[weekKey] = (userData.weekly[weekKey] || 0) + 1;
-
-                    if (!userData.monthly) userData.monthly = {};
-                    userData.monthly[monthKey] = (userData.monthly[monthKey] || 0) + 1;
-
-                    db.set(`stats_${member.id}`, userData);
-                    console.log(`[SÜRE ARTIRILDI] ${userData.displayName} | Toplam Puan: ${userData.total}`);
-                }
             });
         } catch (err) {
             console.error("Periyodik tarama hatası:", err);
         }
     }, 10000);
+});
+
+// ANLIK YAKALAMA: Etkinlik durumu anında değiştiğinde tetiklenir
+client.on('presenceUpdate', (oldPresence, newPresence) => {
+    try {
+        if (!newPresence || !newPresence.guild || newPresence.guild.id !== GUILD_ID) return;
+        const activities = newPresence.activities;
+        if (!activities) return;
+
+        activities.forEach(act => {
+            if (act && act.name) {
+                const name = act.name.toLowerCase();
+                if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
+                    addPointToUser(newPresence.member);
+                }
+            }
+        });
+    } catch (err) {
+        console.error("PresenceUpdate hata:", err);
+    }
 });
 
 // Slash Komutu (/aktiflikbot -> Liderlik Tablosu)
