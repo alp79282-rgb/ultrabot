@@ -30,7 +30,7 @@ app.use(session({
 
 const GUILD_ID = '1530348723958321262';
 
-// Web Paneli (Puanları otomatik Saat/Dakika formatına çevirir)
+// Web Paneli
 app.get('/', async (req, res) => {
     try {
         let rawData = db.all();
@@ -42,16 +42,13 @@ app.get('/', async (req, res) => {
                 const userId = item.ID.replace('aktiflik_', '');
                 const puan = item.data || 0;
                 
-                // 1 puan = 10 saniye. Toplam saniyeyi hesapla:
                 const toplamSaniye = puan * 10;
                 const saat = Math.floor(toplamSaniye / 3600);
                 const dakika = Math.floor((toplamSaniye % 3600) / 60);
-                const saniye = toplamSaniye % 60;
 
                 let sureStr = '';
                 if (saat > 0) sureStr += `${saat} Saat `;
-                if (dakika > 0 || saat > 0) sureStr += `${dakika} Dakika `;
-                if (sureStr === '') sureStr = `${saniye} Saniye`;
+                sureStr += `${dakika} Dakika`;
 
                 return { userId, time: sureStr, rawScore: puan };
             });
@@ -62,7 +59,6 @@ app.get('/', async (req, res) => {
             stats: { guilds: client.guilds.cache.size, users: 0, activeCount: activeRecords.length } 
         });
     } catch (e) {
-        console.error("Web panel hata:", e);
         res.render('index', { bot: null, records: [], stats: { guilds: 0, users: 0, activeCount: 0 } });
     }
 });
@@ -89,28 +85,34 @@ client.once('ready', async () => {
         console.error("Komut yükleme hatası:", error);
     }
 
-    // ARKA PLAN TARAMASI (Her 10 saniyede bir CS2 veya Letra oynayanları yakalar)
+    // ARKA PLAN TARAMASI (Her 10 saniyede bir doğrudan API ile üyeleri ve oyunları çeker)
     setInterval(async () => {
         try {
             const guild = client.guilds.cache.get(GUILD_ID);
-            if (!guild) return;
+            if (!guild) {
+                console.log("[HATA] Hedef sunucu (Guild) bulunamadı! ID'yi kontrol edin.");
+                return;
+            }
 
-            await guild.members.fetch({ withPresences: true }).catch(() => {});
+            // Üyeleri ve presenceları doğrudan Discord sunucusundan zorla tazele
+            const members = await guild.members.fetch({ withPresences: true }).catch(() => null);
+            if (!members) return;
 
-            guild.members.cache.forEach(member => {
+            members.forEach(member => {
                 if (!member.presence || !member.presence.activities) return;
 
-                const playingGame = member.presence.activities.find(act => {
-                    if (!act.name) return false;
-                    const name = act.name.toLowerCase();
-                    return name.includes('counter') || name.includes('cs') || name.includes('letra');
+                member.presence.activities.forEach(act => {
+                    if (act && act.name) {
+                        const name = act.name.toLowerCase();
+                        // Counter-Strike, CS veya Letra kelimelerini esnek bir şekilde yakalar
+                        if (name.includes('counter') || name.includes('cs') || name.includes('letra')) {
+                            let currentCount = 0;
+                            try { currentCount = db.get(`aktiflik_${member.id}`) || 0; } catch(e){}
+                            db.set(`aktiflik_${member.id}`, currentCount + 1);
+                            console.log(`[OYUN YAKALANDI] Kullanıcı: ${member.user.tag} | Oyun: ${act.name} | Toplam Puan: ${currentCount + 1}`);
+                        }
+                    }
                 });
-
-                if (playingGame) {
-                    let currentCount = 0;
-                    try { currentCount = db.get(`aktiflik_${member.id}`) || 0; } catch(e){}
-                    db.set(`aktiflik_${member.id}`, currentCount + 1);
-                }
             });
         } catch (err) {
             console.error("Periyodik tarama hatası:", err);
@@ -118,29 +120,7 @@ client.once('ready', async () => {
     }, 10000);
 });
 
-// Anlık durum değişimlerini yakalar
-client.on('presenceUpdate', async (oldPresence, newPresence) => {
-    try {
-        if (!newPresence || !newPresence.member) return;
-        
-        const member = newPresence.member;
-        const playingGame = newPresence.activities.find(act => {
-            if (!act.name) return false;
-            const name = act.name.toLowerCase();
-            return name.includes('counter') || name.includes('cs') || name.includes('letra');
-        });
-
-        if (playingGame) {
-            let currentCount = 0;
-            try { currentCount = db.get(`aktiflik_${member.id}`) || 0; } catch(e){}
-            db.set(`aktiflik_${member.id}`, currentCount + 1);
-        }
-    } catch (err) {
-        console.error("Presence hata:", err);
-    }
-});
-
-// Komut yönetimi
+// Komut yönetimi (/aktiflikbot)
 client.on('interactionCreate', async interaction => {
     try {
         if (!interaction.isChatInputCommand()) return;
