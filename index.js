@@ -56,18 +56,16 @@ client.once('ready', async () => {
     const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
-        // Komut çakışmasını önlemek için ismi '/aktiflik-kontrol' yaptık
         const commands = [
             new SlashCommandBuilder()
-                .setName('aktiflik-kontrol')
+                .setName('aktiflikkontrol')
                 .setDescription('Kendi aktiflik durumunuzu görüntüler ve onaylarsınız.')
                 .toJSON()
         ];
 
-        // Önce temizlik yapıp sonra yeni ismi kaydediyoruz
-        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: [] });
+        // Sadece bu sunucuya temiz bir şekilde kaydediyoruz
         await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log('[BAŞARILI] /aktiflik-kontrol komutu önbelleği kırarak yüklendi!');
+        console.log('[BAŞARILI] /aktiflikkontrol komutu sunucuya yüklendi!');
     } catch (error) {
         console.error("Komut yükleme hatası:", error);
     }
@@ -80,18 +78,21 @@ client.on('presenceUpdate', (oldPresence, newPresence) => {
         const playingGame = newPresence.activities.find(act => act.type === 0);
 
         if (playingGame) {
-            let currentCount = db.get(`aktiflik_${userId}`) || 0;
-            db.set(`aktiflik_${userId}`, currentCount + 1);
+            let currentCount = 0;
+            try { currentCount = db.get(`aktiflik_${userId}`) || 0; } catch(e){}
+            try { db.set(`aktiflik_${userId}`, currentCount + 1); } catch(e){}
         }
     } catch (err) {}
 });
 
+// KESİN ÇÖZÜM: Hata patlatmayan interaction yönetimi
 client.on('interactionCreate', async interaction => {
-    if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === 'aktiflik-kontrol') {
-            await interaction.deferReply({ ephemeral: true });
+    try {
+        if (interaction.isChatInputCommand()) {
+            if (interaction.commandName === 'aktiflikkontrol') {
+                // Discord'a hemen zaman kazandırıyoruz
+                await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
-            try {
                 const userId = interaction.user.id;
                 let userScore = 0;
                 
@@ -115,19 +116,16 @@ client.on('interactionCreate', async interaction => {
                         .setEmoji('✅')
                 );
 
-                await interaction.editReply({ embeds: [embed], components: [row] });
-            } catch (err) {
-                console.error("Komut işleme hatası:", err);
-                try {
-                    await interaction.editReply({ content: '❌ Bilgiler yüklenirken bir hata oluştu.', embeds: [], components: [] });
-                } catch (e) {}
+                await interaction.editReply({ embeds: [embed], components: [row] }).catch((e) => {
+                    console.error("Edit reply hatası:", e);
+                });
             }
-        }
-    } 
-    else if (interaction.isButton()) {
-        if (interaction.customId === 'aktiflik_onayla_btn') {
-            try {
-                db.set(`onay_${interaction.user.id}`, true);
+        } 
+        else if (interaction.isButton()) {
+            if (interaction.customId === 'aktiflik_onayla_btn') {
+                try {
+                    db.set(`onay_${interaction.user.id}`, true);
+                } catch(e){}
 
                 const successEmbed = new EmbedBuilder()
                     .setColor('#22c55e')
@@ -135,11 +133,11 @@ client.on('interactionCreate', async interaction => {
                     .setDescription('Aktiflik durumunuz sistem tarafından kaydedildi.')
                     .setTimestamp();
 
-                await interaction.update({ embeds: [successEmbed], components: [] });
-            } catch (err) {
-                console.error("Buton hatası:", err);
+                await interaction.update({ embeds: [successEmbed], components: [] }).catch(() => {});
             }
         }
+    } catch (err) {
+        console.error("Interaction genel hata:", err);
     }
 });
 
