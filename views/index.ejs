@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= botName %> Panel</title>
+    <style>
+        body { background: #0f172a; color: white; font-family: sans-serif; padding: 20px; }
+        .card { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; width: 400px; }
+        input { width: 100%; padding: 8px; margin: 8px 0; background: #334155; border: none; color: white; border-radius: 4px; }
+        button { background: #0284c7; color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1><%= botName %> Dashboard</h1>
+    <p>Aktif Sunucu Sayısı: <%= guildsCount %></p>
+
+    <div class="card">
+        <h3>Sunucu Ayarları</h3>
+        <% if(guilds.length > 0) { %>
+            <form action="/api/settings/<%= guilds[0].id %>" method="POST">
+                <input type="text" name="autoRoleId" placeholder="Oto-Rol ID">
+                <input type="text" name="welcomeChannelId" placeholder="Hoş Geldin Kanal ID">
+                <label><input type="checkbox" name="antiSwear"> Küfür Engeli Aç</label><br><br>
+                <button type="submit">Kaydet</button>
+            </form>
+        <% } %>
+    </div>
+
+    <div class="card">
+        <h3>Buton Rol Gönder</h3>
+        <form action="/api/send-role-panel" method="POST">
+            <input type="text" name="channelId" placeholder="Kanal ID">
+            <input type="text" name="roleId" placeholder="Verilecek Rol ID">
+            <input type="text" name="buttonLabel" placeholder="Buton Yazısı">
+            <button type="submit">Paneli Gönder</button>
+        </form>
+    </div>
+</body>
+</html>
