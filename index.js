@@ -28,6 +28,7 @@ app.use(session({
     saveUninitialized: false
 }));
 
+// Web Panel Rotaları (Hata Korumalı)
 app.get('/', async (req, res) => {
     try {
         let rawData = db.all();
@@ -56,7 +57,6 @@ client.once('ready', async () => {
     const CLIENT_ID = process.env.CLIENT_ID;
 
     try {
-        console.log("Komutlar sunucuya yükleniyor...");
         const commands = [
             new SlashCommandBuilder()
                 .setName('aktiflikkontrol')
@@ -71,28 +71,38 @@ client.once('ready', async () => {
     }
 });
 
-// FiveM / Oyun aktivite takibi
+// Güvenli aktivite takip mekanizması
 client.on('presenceUpdate', (oldPresence, newPresence) => {
-    if (!newPresence || !newPresence.member) return;
-    const userId = newPresence.member.id;
-    const playingGame = newPresence.activities.find(act => act.type === 0);
+    try {
+        if (!newPresence || !newPresence.member) return;
+        const userId = newPresence.member.id;
+        const playingGame = newPresence.activities.find(act => act.type === 0);
 
-    if (playingGame) {
-        let currentCount = db.fetch(`aktiflik_${userId}`) || 0;
-        db.set(`aktiflik_${userId}`, currentCount + 1);
+        if (playingGame) {
+            let currentCount = db.get(`aktiflik_${userId}`) || 0;
+            db.set(`aktiflik_${userId}`, currentCount + 1);
+        }
+    } catch (err) {
+        // Arka plan hatalarının botu çökeltmesi engellendi
     }
 });
 
-// Slash Komut Yönetimi
+// Kesin Çözüm: Etkileşim Yönetimi (Zaman Aşımı Korumalı)
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'aktiflikkontrol') {
-            // Zaman aşımını önlemek için hemen ephemeral yanıt bekletisi açıyoruz
+            // Discord'un 3 saniye kuralını kırmak için anında ephemeral yanıt açıyoruz
             await interaction.deferReply({ ephemeral: true });
 
             try {
                 const userId = interaction.user.id;
-                const userScore = db.fetch(`aktiflik_${userId}`) || 0;
+                let userScore = 0;
+                
+                try {
+                    userScore = db.get(`aktiflik_${userId}`) || 0;
+                } catch (dbErr) {
+                    userScore = 0;
+                }
 
                 const embed = new EmbedBuilder()
                     .setColor('#0ea5e9')
@@ -111,7 +121,9 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ embeds: [embed], components: [row] });
             } catch (err) {
                 console.error("Komut işleme hatası:", err);
-                await interaction.editReply({ content: '❌ Bilgiler yüklenirken bir hata oluştu.' });
+                try {
+                    await interaction.editReply({ content: '❌ Bilgiler yüklenirken bir hata oluştu.', embeds: [], components: [] });
+                } catch (e) {}
             }
         }
     } 
